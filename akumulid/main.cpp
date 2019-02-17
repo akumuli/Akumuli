@@ -10,6 +10,7 @@
 #include <iostream>
 #include <fstream>
 #include <regex>
+#include <thread>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
@@ -82,19 +83,34 @@ pool_size=1
 port=4242
 
 
-
 # Logging configuration
 # This is just a log4cxx configuration without any modifications
 
 log4j.rootLogger=all, file
 log4j.appender.file=org.apache.log4j.DailyRollingFileAppender
 log4j.appender.file.layout=org.apache.log4j.PatternLayout
-log4j.appender.file.layout.ConversionPattern=%%d{yyyy-MM-dd HH:mm:ss,SSS} %%c [%%p] %%m%%n
+log4j.appender.file.layout.ConversionPattern=%%d{yyyy-MM-dd HH:mm:ss,SSS} [%%t] %%c [%%p] %%m%%n
 log4j.appender.file.filename=/tmp/akumuli.log
 log4j.appender.file.datePattern='.'yyyy-MM-dd
 
 )";
 
+
+const char* WAL_CONFIG = R"(# Write-Ahead-Log section (delete to disable)
+
+[WAL]
+# WAL location
+path=~/.akumuli
+
+# Max volume size. Log records are added until file size
+# will exced configured value.
+volume_size=256MB
+
+# Number of log volumes to keep on disk per CPU core. E.g. with `volume_size` = 256MB
+# and `nvolumes` = 4 and 4 CPUs WAL will use 4GB at most (4*4*256MB).
+nvolumes=4
+
+)";
 
 
 //! Container class for configuration related functions
@@ -107,7 +123,7 @@ struct ConfigFile {
         return path2cfg;
     }
 
-    static void init_config(boost::filesystem::path path) {
+    static void init_config(boost::filesystem::path path, bool disable_wal=false) {
         if (boost::filesystem::exists(path)) {
             std::runtime_error err("configuration file already exists");
             BOOST_THROW_EXCEPTION(err);
@@ -116,10 +132,13 @@ struct ConfigFile {
         int nvolumes = 4;
         std::string config = boost::str(boost::format(DEFAULT_CONFIG) % nvolumes);
         stream << config << std::endl;
+        if (!disable_wal) {
+            stream << WAL_CONFIG << std::endl;
+        }
         stream.close();
     }
 
-    static void init_exp_config(boost::filesystem::path path) {
+    static void init_exp_config(boost::filesystem::path path, bool disable_wal=false) {
         if (boost::filesystem::exists(path)) {
             std::runtime_error err("configuration file already exists");
             BOOST_THROW_EXCEPTION(err);
@@ -128,6 +147,9 @@ struct ConfigFile {
         int nvolumes = 0;
         std::string config = boost::str(boost::format(DEFAULT_CONFIG) % nvolumes);
         stream << config << std::endl;
+        if (!disable_wal) {
+            stream << WAL_CONFIG << std::endl;
+        }
         stream.close();
     }
 
@@ -145,8 +167,7 @@ struct ConfigFile {
         return conf;
     }
 
-    static boost::filesystem::path get_path(PTree conf) {
-        std::string path = conf.get<std::string>("path");
+    static boost::filesystem::path expand_path(std::string path) {
         wordexp_t we;
         int err = wordexp(path.c_str(), &we, 0);
         if (err) {
@@ -167,13 +188,16 @@ struct ConfigFile {
         return result;
     }
 
+    static boost::filesystem::path get_path(PTree conf) {
+        return expand_path(conf.get<std::string>("path"));
+    }
+
     static i32 get_nvolumes(PTree conf) {
         return conf.get<i32>("nvolumes");
     }
 
-    static u64 get_volume_size(PTree conf) {
+    static u64 get_memory_size(std::string strsize) {
         u64 result = 0;
-        auto strsize = conf.get<std::string>("volume_size", "4GB");
         try {
             result = boost::lexical_cast<u64>(strsize);
         } catch (boost::bad_lexical_cast const&) {
@@ -207,6 +231,31 @@ struct ConfigFile {
             result *= mul;
         }
         return result;
+
+    }
+
+    static u64 get_volume_size(PTree conf) {
+        auto strsize = conf.get<std::string>("volume_size", "4GB");
+        return get_memory_size(strsize);
+    }
+
+    static WALSettings get_wal_settings(PTree conf) {
+        WALSettings settings = {};
+        if (conf.find("WAL") != conf.not_found()) {
+            logger.info() << "WAL is enabled in configuration";
+            auto path = expand_path(conf.get<std::string>("WAL.path", ""));
+            if (!boost::filesystem::exists(path)) {
+                throw std::runtime_error("WAL.path doesn't exist");
+            }
+            settings.path = path.string();
+            settings.nvolumes = conf.get<int>("WAL.nvolumes", 0);
+            auto bytes = get_memory_size(conf.get<std::string>("WAL.volume_size", "0"));
+            settings.volume_size_bytes = static_cast<int>(bytes);
+        } else {
+            logger.info() << "WAL is disabled in configuration";
+            settings = {};
+        }
+        return settings;
     }
 
     static ServerSettings get_http_server(PTree conf) {
@@ -256,7 +305,7 @@ struct ConfigFile {
 /** Help message used in CLI. It contains simple markdown formatting.
   * `rich_print function should be used to print this message.
   */
-const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
+static const char* CLI_HELP_MESSAGE = R"(`akumulid` - time-series database daemon
 
 **SYNOPSIS**
         akumulid
@@ -405,6 +454,7 @@ void cmd_run_server() {
     auto config                 = ConfigFile::read_config_file(config_path);
     auto path                   = ConfigFile::get_path(config);
     auto ingestion_servers      = ConfigFile::get_server_settings(config);
+    auto wal_config             = ConfigFile::get_wal_settings(config);
     auto full_path              = boost::filesystem::path(path) / "db.akumuli";
 
     if (!boost::filesystem::exists(full_path)) {
@@ -412,8 +462,47 @@ void cmd_run_server() {
         fmt << "**ERROR** database file doesn't exists at " << path;
         std::cout << cli_format(fmt.str()) << std::endl;
     } else {
-        auto connection             = std::make_shared<AkumuliConnection>(full_path.c_str());
-        auto qproc                  = std::make_shared<QueryProcessor>(connection, 1000);
+        aku_FineTuneParams params = {};
+        if (!wal_config.path.empty() && wal_config.nvolumes != 0 && wal_config.volume_size_bytes != 0) {
+            unsigned log_ccr = 0;
+            for (auto settings: ingestion_servers) {
+                unsigned ccr = settings.nworkers < 0 ? std::thread::hardware_concurrency()
+                                                     : static_cast<unsigned>(settings.nworkers);
+                log_ccr = std::max(log_ccr, ccr);
+            }
+            bool use_wal = true;
+            if (wal_config.nvolumes < 0 || wal_config.nvolumes > 1000) {
+                std::stringstream fmt;
+                fmt << "**ERROR** invalid configuration value WAL.nvolumes = " << wal_config.nvolumes
+                    << ", value should not exceed 1000";
+                std::cout << cli_format(fmt.str()) << std::endl;
+                use_wal = false;
+            }
+            if (wal_config.volume_size_bytes < 1048576 /*1MB*/ ||
+                wal_config.volume_size_bytes > 1073741824 /*1GB*/) {
+                std::stringstream fmt;
+                fmt << "**ERROR** invalid configuration value WAL.volume_size = " << wal_config.volume_size_bytes
+                    << ", size should be in 1MB-1GB range";
+                std::cout << cli_format(fmt.str()) << std::endl;
+                use_wal = false;
+            }
+            if (!boost::filesystem::exists(wal_config.path)) {
+                std::stringstream fmt;
+                fmt << "**ERROR** invalid configuration value WAL.path = " << wal_config.path
+                    << ", directory doesn't exist";
+                std::cout << cli_format(fmt.str()) << std::endl;
+                use_wal = false;
+            }
+            if (use_wal) {
+                params.input_log_concurrency = log_ccr;
+                params.input_log_path        = wal_config.path.data();
+                params.input_log_volume_numb = static_cast<u64>(wal_config.nvolumes);
+                params.input_log_volume_size = static_cast<u64>(wal_config.volume_size_bytes);
+            }
+        }
+
+        auto connection  = std::make_shared<AkumuliConnection>(full_path.c_str(), params);
+        auto qproc       = std::make_shared<QueryProcessor>(connection, 1000);
 
         SignalHandler sighandler;
         int srvid = 0;
@@ -468,12 +557,13 @@ void cmd_delete_database() {
 
     auto config     = ConfigFile::read_config_file(config_path);
     auto path       = ConfigFile::get_path(config);
+    auto wal_path   = ConfigFile::get_wal_settings(config).path;
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (boost::filesystem::exists(full_path)) {
         // TODO: don't delete database if it's not empty
         // FIXME: add command line argument --force to delete nonempty database
-        auto status = aku_remove_database(full_path.c_str(), true);
+        auto status = aku_remove_database(full_path.c_str(), wal_path.c_str(), true);
         if (status != APR_SUCCESS) {
             char buffer[1024];
             apr_strerror(status, buffer, 1024);
@@ -592,6 +682,7 @@ int main(int argc, char** argv) {
                 ("CI", "Create database for CI environment (for testing)")
                 ("init", "Create default configuration")
                 ("init-expandable", "Create configuration for expandable storage")
+                ("disable-wal", "Disable WAL in generated configuration file (can be used with --init)")
                 ("debug-dump", po::value<std::string>(), "Create debug dump")
                 ("debug-recovery-dump", po::value<std::string>(), "Create debug dump of the system after crash recovery")
                 ;
@@ -619,7 +710,8 @@ int main(int argc, char** argv) {
         }
 
         if (vm.count("init")) {
-            ConfigFile::init_config(path);
+            bool disable_wal = vm.count("disable-wal");
+            ConfigFile::init_config(path, disable_wal);
 
             std::stringstream fmt;
             fmt << "**OK** configuration file created at: `" << path << "`";
@@ -628,7 +720,8 @@ int main(int argc, char** argv) {
         }
 
         if (vm.count("init-expandable")) {
-            ConfigFile::init_exp_config(path);
+            bool disable_wal = vm.count("disable-wal");
+            ConfigFile::init_exp_config(path, disable_wal);
 
             std::stringstream fmt;
             fmt << "**OK** configuration file created at: `" << path << "`";

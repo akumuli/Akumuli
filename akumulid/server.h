@@ -1,6 +1,6 @@
 #pragma once
 #include "akumuli.h"
-#include "ingestion_pipeline.h"
+#include "storage_api.h"
 #include "signal_handler.h"
 
 #include <map>
@@ -21,6 +21,11 @@ struct ServerSettings {
     int                           nworkers;
 };
 
+struct WALSettings {
+    std::string  path;
+    int          volume_size_bytes;
+    int          nvolumes;
+};
 
 /** Interface to query data.
   */

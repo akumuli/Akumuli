@@ -36,6 +36,7 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/bind.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/thread/barrier.hpp>
 
 #include "fcntl_compat.h"
 #include <cstdlib>
@@ -94,11 +95,38 @@ static apr_status_t create_metadata_page(const char* db_name
 
 //--------- StorageSession ----------
 
-StorageSession::StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session)
+
+static InputLog* get_input_log(ShardedInputLog* log) {
+    if (log != nullptr) {
+        std::hash<std::thread::id> thash;
+        size_t hash = thash(std::this_thread::get_id());
+        return &log->get_shard(static_cast<int>(hash));
+    }
+    return nullptr;
+}
+
+StorageSession::StorageSession(std::shared_ptr<Storage> storage,
+                               std::shared_ptr<StorageEngine::CStoreSession> session,
+                               ShardedInputLog* log)
     : storage_(storage)
     , session_(session)
     , matcher_substitute_(nullptr)
+    , ilog_(get_input_log(log))
 {
+}
+
+StorageSession::~StorageSession() {
+    Logger::msg(AKU_LOG_TRACE, "StorageSession is being closed");
+    if (ilog_) {
+        std::vector<u64> staleids;
+        auto res = ilog_->flush(&staleids);
+        if (res == AKU_EOVERFLOW) {
+            Logger::msg(AKU_LOG_TRACE, "StorageSession input log overflow, " +
+                                       std::to_string(staleids.size()) +
+                                       " stale ids is about to be closed");
+            storage_->close_specific_columns(staleids);
+        }
+    }
 }
 
 aku_Status StorageSession::write(aku_Sample const& sample) {
@@ -107,10 +135,17 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
     auto status = session_->write(sample, &rpoints);
     switch (status) {
     case NBTreeAppendResult::OK:
-        return AKU_SUCCESS;
+        break;
     case NBTreeAppendResult::OK_FLUSH_NEEDED:
-        storage_-> _update_rescue_points(sample.paramid, std::move(rpoints));
-        return AKU_SUCCESS;
+        if (ilog_ != nullptr) {
+            // Copy rpoints here because it will be needed later to add new entry
+            // into the input-log.
+            auto rpoints_copy = rpoints;
+            storage_-> _update_rescue_points(sample.paramid, std::move(rpoints_copy));
+        } else {
+            storage_-> _update_rescue_points(sample.paramid, std::move(rpoints));
+        }
+        break;
     case NBTreeAppendResult::FAIL_BAD_ID:
         Logger::msg(AKU_LOG_ERROR, "Invalid session cache, id = " + std::to_string(sample.paramid));
         return AKU_ENOT_FOUND;
@@ -119,6 +154,34 @@ aku_Status StorageSession::write(aku_Sample const& sample) {
     case NBTreeAppendResult::FAIL_BAD_VALUE:
         return AKU_EBAD_ARG;
     };
+    if (ilog_ != nullptr) {
+        std::vector<u64> staleids;
+        auto res = ilog_->append(sample.paramid, sample.timestamp, sample.payload.float64, &staleids);
+        if (res == AKU_EOVERFLOW) {
+            if (!staleids.empty()) {
+                std::promise<void> barrier;
+                std::future<void> future = barrier.get_future();
+                storage_->add_metadata_sync_barrier(std::move(barrier));
+                storage_->close_specific_columns(staleids);
+                staleids.clear();
+                future.wait();
+            }
+            ilog_->rotate();
+        }
+        if (status == NBTreeAppendResult::OK_FLUSH_NEEDED) {
+            auto res = ilog_->append(sample.paramid, rpoints.data(), static_cast<u32>(rpoints.size()), &staleids);
+            if (res == AKU_EOVERFLOW) {
+                if (!staleids.empty()) {
+                    std::promise<void> barrier;
+                    std::future<void> future = barrier.get_future();
+                    storage_->add_metadata_sync_barrier(std::move(barrier));
+                    storage_->close_specific_columns(staleids);
+                    future.wait();
+                }
+                ilog_->rotate();
+            }
+        }
+    }
     return AKU_SUCCESS;
 }
 
@@ -141,7 +204,28 @@ aku_Status StorageSession::init_series_id(const char* begin, const char* end, ak
     u64 id = local_matcher_.match(ob, ksend);
     if (!id) {
         // go to global registery
-        status = storage_->init_series_id(ob, ksend, sample, &local_matcher_);
+        bool create_new = false;
+        std::tie(status, create_new) = storage_->init_series_id(ob, ksend, sample, &local_matcher_);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        if (create_new) {
+            // Add record to input log
+            if (ilog_ != nullptr) {
+                std::vector<aku_ParamId> staleids;
+                auto res = ilog_->append(sample->paramid, ob, static_cast<u32>(ksend - ob), &staleids);
+                if (res == AKU_EOVERFLOW) {
+                    if (!staleids.empty()) {
+                        std::promise<void> barrier;
+                        std::future<void> future = barrier.get_future();
+                        storage_->add_metadata_sync_barrier(std::move(barrier));
+                        storage_->close_specific_columns(staleids);
+                        future.wait();
+                    }
+                    ilog_->rotate();
+                }
+            }
+        }
     } else {
         // initialize using local info
         sample->paramid = id;
@@ -173,7 +257,6 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
     }
 
     if (nmetric == 1) {
-        // Fast path
         // Match series name locally (on success use local information)
         // Otherwise - match using global registry. On success - add global information to
         //  the local matcher. On error - add series name to global registry and then to
@@ -182,8 +265,26 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
         if (!id) {
             // go to global registery
             aku_Sample sample;
-            status = storage_->init_series_id(ob, ksend, &sample, &local_matcher_);
+            bool new_name = false;
+            std::tie(status, new_name) = storage_->init_series_id(ob, ksend, &sample, &local_matcher_);
             ids[0] = sample.paramid;
+            if (new_name) {
+                // Add record to input log
+                if (ilog_ != nullptr) {
+                    std::vector<aku_ParamId> staleids;
+                    auto res = ilog_->append(ids[0], ob, static_cast<u32>(ksend - ob), &staleids);
+                    if (res == AKU_EOVERFLOW) {
+                        if (!staleids.empty()) {
+                            std::promise<void> barrier;
+                            std::future<void> future = barrier.get_future();
+                            storage_->add_metadata_sync_barrier(std::move(barrier));
+                            storage_->close_specific_columns(staleids);
+                            future.wait();
+                        }
+                        ilog_->rotate();
+                    }
+                }
+            }
         } else {
             // initialize using local info
             ids[0] = id;
@@ -194,6 +295,11 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
         int tagline_len = static_cast<int>(ksend - ksbegin + 1);  // +1 for space, cast is safe because ksend-ksbegin < AKU_LIMITS_MAX_SNAME
         const char* metric_end = ksbegin - 1;  // -1 for space
         char* tagline = series + AKU_LIMITS_MAX_SNAME - tagline_len;
+        // TODO: remove
+        if (tagline_len < 0) {
+            AKU_PANIC("Invalid tagline length");
+        }
+        // end
         memcpy(tagline, metric_end, static_cast<size_t>(tagline_len));
         char* send = series + AKU_LIMITS_MAX_SNAME;
 
@@ -207,7 +313,12 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
             // Copy metric name to `series` array
             auto metric_len = it_end - it_begin;
             char* sbegin = tagline - metric_len;
-            memcpy(sbegin, it_begin, metric_len);
+            // TODO: remove
+            if (metric_len < 0) {
+                AKU_PANIC("Invalid metric length");
+            }
+            // end
+            memcpy(sbegin, it_begin, static_cast<size_t>(metric_len));
             // Move to next metric (if any)
             it_end++;
             it_begin = it_end;
@@ -220,8 +331,26 @@ int StorageSession::get_series_ids(const char* begin, const char* end, aku_Param
             if (!id) {
                 // go to global registery
                 aku_Sample tmp;
-                status = storage_->init_series_id(sbegin, send, &tmp, &local_matcher_);
+                bool newname;
+                std::tie(status, newname) = storage_->init_series_id(sbegin, send, &tmp, &local_matcher_);
                 ids[i] = tmp.paramid;
+                if (newname) {
+                    // Add record to input log
+                    if (ilog_ != nullptr) {
+                        std::vector<aku_ParamId> staleids;
+                        auto res = ilog_->append(ids[i], sbegin, static_cast<u32>(send - sbegin), &staleids);
+                        if (res == AKU_EOVERFLOW) {
+                            if (!staleids.empty()) {
+                                std::promise<void> barrier;
+                                std::future<void> future = barrier.get_future();
+                                storage_->add_metadata_sync_barrier(std::move(barrier));
+                                storage_->close_specific_columns(staleids);
+                                future.wait();
+                            }
+                            ilog_->rotate();
+                        }
+                    }
+                }
             } else {
                 // initialize using local info
                 ids[i] = id;
@@ -248,7 +377,7 @@ int StorageSession::get_series_name(aku_ParamId id, char* buffer, size_t buffer_
         }
     }
     memcpy(buffer, name.first, static_cast<size_t>(name.second));
-    return name.second;
+    return static_cast<int>(name.second);
 }
 
 void StorageSession::query(InternalCursor* cur, const char* query) const {
@@ -286,13 +415,12 @@ Storage::Storage()
     start_sync_worker();
 }
 
-Storage::Storage(const char* path)
+Storage::Storage(const char* path, const aku_FineTuneParams &params)
     : done_{0}
     , close_barrier_(2)
 {
     metadata_.reset(new MetadataStorage(path));
 
-    std::string metapath;
     std::vector<std::string> volpaths;
 
     // first volume is a metavolume
@@ -332,8 +460,316 @@ Storage::Storage(const char* path)
         Logger::msg(AKU_LOG_ERROR, "Can't read rescue points");
         AKU_PANIC("Can't read rescue points");
     }
-    cstore_->open_or_restore(mapping, true);
+    // There are two possible configurations 1) WAL is disabled 2) WAL is enabled
+    // If WAL is disabled, Akumuli should work as usual. This means that we have
+    // to call 'force_init' for every tree. This will use maximum amount of memory
+    // but will increase performance in many cases, because we wan't need to read
+    // anything from disk before writing. In this mode every nbtree instance is
+    // always loaded into memory.
+    // If WAL is enabled we don't need to call 'force_init' because in this case
+    // every nbtree instance is not loaded into memory until something have to be
+    // written into it. In this case it gets loaded into memory. When the data that
+    // belongs to this nbtee instance gets evicted from WAL we will have to close
+    // the tree (and write it's content to disk). It can slow down things a bit
+    // but the data will be safe.
+    run_recovery(params, &mapping);
     start_sync_worker();
+}
+
+void Storage::run_recovery(const aku_FineTuneParams &params,
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping)
+{
+    bool run_wal_recovery = false;
+    int ccr = 0;
+    if (params.input_log_path) {
+        aku_Status status;
+        std::tie(status, ccr) = ShardedInputLog::find_logs(params.input_log_path);
+        if (status == AKU_SUCCESS && ccr > 0) {
+            run_wal_recovery = true;
+        }
+    }
+    // Run metadata replay followed by the restore procedure (based on recovered
+    // metdata) followed by full log replay.
+    std::vector<aku_ParamId> new_ids;
+    if (run_wal_recovery) {
+        auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
+        run_inputlog_metadata_recovery(ilog.get(), &new_ids, mapping);
+    }
+    aku_Status restore_status;
+    std::vector<aku_ParamId> restored_ids;
+    std::tie(restore_status, restored_ids) = cstore_->open_or_restore(*mapping, params.input_log_path == nullptr);
+    std::copy(new_ids.begin(), new_ids.end(), std::back_inserter(restored_ids));
+    if (run_wal_recovery) {
+        auto ilog = std::make_shared<ShardedInputLog>(ccr, params.input_log_path);
+        run_inputlog_recovery(ilog.get(), restored_ids);
+        // This step will delete log files
+    }
+}
+
+void Storage::initialize_input_log(const aku_FineTuneParams &params) {
+    if (params.input_log_path) {
+        Logger::msg(AKU_LOG_INFO, std::string("WAL enabled, path: ") +
+                                  params.input_log_path + ", nvolumes: " +
+                                  std::to_string(params.input_log_volume_numb) + ", volume-size: " +
+                                  std::to_string(params.input_log_volume_size));
+
+        inputlog_.reset(new ShardedInputLog(static_cast<int>(params.input_log_concurrency),
+                                            params.input_log_path,
+                                            params.input_log_volume_numb,
+                                            params.input_log_volume_size));
+
+        input_log_path_ = params.input_log_path;
+    }
+}
+
+void Storage::run_inputlog_metadata_recovery(
+        ShardedInputLog* ilog,
+        std::vector<aku_ParamId>* restored_ids,
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping)
+{
+    struct Visitor : boost::static_visitor<bool> {
+        Storage* storage;
+        aku_ParamId curr_id;
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping;
+        StorageEngine::LogicAddr top_addr;
+        std::vector<aku_ParamId>* restored_ids;
+
+        /** Should be called for each input-log record
+          * before using as a visitor
+          */
+        void reset(aku_ParamId id) {
+            curr_id = id;
+        }
+
+        bool operator () (const InputLogDataPoint&) {
+            // Datapoints are ignored at this stage of the recovery.
+            return true;
+        }
+
+        bool operator () (const InputLogSeriesName& sname) {
+            auto strref = storage->global_matcher_.id2str(curr_id);
+            if (strref.second) {
+                // Fast path, name already added
+                return true;
+            }
+            bool create_new = false;
+            auto begin = sname.value.data();
+            auto end = begin + sname.value.length();
+            auto id = storage->global_matcher_.match(begin, end);
+            if (id == 0) {
+                // create new series
+                id = curr_id;
+                StringT prev = storage->global_matcher_.id2str(id);
+                if (prev.second != 0) {
+                    // sample.paramid maps to some other series
+                    Logger::msg(AKU_LOG_ERROR, "Series id conflict. Id " + std::to_string(id) + " is already taken by "
+                                             + std::string(prev.first, prev.first + prev.second) + ". Series name "
+                                             + sname.value + " is skipped.");
+                    return true;
+                }
+                storage->global_matcher_._add(sname.value, id);
+                storage->metadata_->add_rescue_point(id, std::vector<u64>());
+                create_new = true;
+            }
+            if (create_new) {
+                // id guaranteed to be unique
+                Logger::msg(AKU_LOG_TRACE, "WAL-recovery create new column based on series name " + sname.value);
+                storage->cstore_->create_new_column(id);
+                restored_ids->push_back(id);
+            }
+            return true;
+        }
+
+        bool operator () (const InputLogRecoveryInfo& rinfo) {
+            // Check that series exists
+            auto strref = storage->global_matcher_.id2str(curr_id);
+            if (!strref.second) {
+                // Id is not taken
+                Logger::msg(AKU_LOG_ERROR, "Series id is not taken. Id " + std::to_string(curr_id) + ", recovery record will be skipped.");
+                return true;
+            }
+            std::vector<StorageEngine::LogicAddr> rpoints(rinfo.data);
+            auto it = mapping->find(curr_id);
+            if (it != mapping->end()) {
+                // Check if rescue points are of newer version.
+                // If *it is newer than rinfo.data then return. Otherwise,
+                // update rescue points list using rinfo.data.
+                const std::vector<StorageEngine::LogicAddr> &current = it->second;
+                if (rinfo.data.empty()) {
+                    return true;
+                }
+                if (!current.empty()) {
+                    if (current.size() > rinfo.data.size()) {
+                        return true;
+                    }
+                    auto curr_max = std::max_element(current.begin(), current.end());
+                    auto data_max = std::max_element(rinfo.data.begin(), rinfo.data.end());
+                    if (*data_max >= top_addr || *curr_max > *data_max) {
+                        return true;
+                    }
+                }
+            }
+            (*mapping)[curr_id] = rpoints;
+            storage->_update_rescue_points(curr_id, std::move(rpoints));
+            return true;
+        }
+    };
+
+    Visitor visitor;
+    visitor.storage      = this;
+    visitor.mapping      = mapping;
+    visitor.top_addr     = bstore_->get_top_address();
+    visitor.restored_ids = restored_ids;
+    bool proceed         = true;
+    size_t nitems        = 0x1000;
+    u64 nsegments        = 0;
+    std::vector<InputLogRow> rows(nitems);
+    Logger::msg(AKU_LOG_INFO, "WAL metadata recovery started");
+
+    while (proceed) {
+        aku_Status status;
+        u32 outsize;
+        std::tie(status, outsize) = ilog->read_next(nitems, rows.data());
+        if (status == AKU_SUCCESS || (status == AKU_ENO_DATA && outsize > 0)) {
+            for (u32 ix = 0; ix < outsize; ix++) {
+                const InputLogRow& row = rows.at(ix);
+                visitor.reset(row.id);
+                proceed = row.payload.apply_visitor(visitor);
+            }
+            nsegments++;
+        }
+        else if (status == AKU_ENO_DATA) {
+            Logger::msg(AKU_LOG_INFO, "WAL metadata recovery completed");
+            Logger::msg(AKU_LOG_INFO, std::to_string(nsegments) + " segments scanned");
+            proceed = false;
+        }
+        else {
+            Logger::msg(AKU_LOG_ERROR, "WAL recovery error: " + StatusUtil::str(status));
+            proceed = false;
+        }
+    }
+    ilog->reopen();
+}
+
+void Storage::run_inputlog_recovery(ShardedInputLog* ilog, std::vector<aku_ParamId> ids2restore) {
+    struct Visitor : boost::static_visitor<bool> {
+        Storage* storage;
+        aku_Sample sample;
+        std::unordered_set<aku_ParamId> updated_ids;
+        u64 nsamples = 0;
+        u64 nlost = 0;
+
+        /** Should be called for each input-log record
+          * before using as a visitor
+          */
+        void reset(aku_ParamId id) {
+            sample = {};
+            sample.paramid = id;
+        }
+
+        bool operator () (const InputLogDataPoint& point) {
+            sample.timestamp        = point.timestamp;
+            sample.payload.float64  = point.value;
+            sample.payload.size     = sizeof(aku_Sample);
+            sample.payload.type     = AKU_PAYLOAD_FLOAT;
+            auto result = storage->cstore_->recovery_write(sample,
+                                                           updated_ids.count(sample.paramid));
+                // In a normal situation, Akumuli allows duplicates (data-points
+                // with the same timestamp). But during recovery, this leads to
+                // the following problem. Recovery procedure will replay the log
+                // and try to add every value registered by it. The last value
+                // stored inside the NB+tree instance will be added second time
+                // by the replay. To prevent it this code disables the ability
+                // to add duplicates until the first value will be successfully
+                // added to the NB+tree instance. The progress is tracked
+                // per-series using the map (updated_ids).
+            switch(result) {
+            case StorageEngine::NBTreeAppendResult::FAIL_BAD_VALUE:
+                Logger::msg(AKU_LOG_INFO, "WAL recovery failed");
+                return false;
+            case StorageEngine::NBTreeAppendResult::FAIL_BAD_ID:
+                nlost++;
+                break;
+            case StorageEngine::NBTreeAppendResult::OK_FLUSH_NEEDED:
+            case StorageEngine::NBTreeAppendResult::OK:
+                updated_ids.insert(sample.paramid);
+                nsamples++;
+                break;
+            default:
+                break;
+            };
+            return true;
+        }
+
+        bool operator () (const InputLogSeriesName&) {
+            return true;
+        }
+
+        bool operator () (const InputLogRecoveryInfo&) {
+            return true;
+        }
+    };
+
+    Visitor visitor;
+    visitor.storage = this;
+    bool proceed    = true;
+    size_t nitems   = 0x1000;
+    u64 nsegments   = 0;
+    std::vector<InputLogRow> rows(nitems);
+    Logger::msg(AKU_LOG_INFO, "WAL recovery started");
+    std::unordered_set<aku_ParamId> idfilter(ids2restore.begin(),
+                                             ids2restore.end());
+
+    while (proceed) {
+        aku_Status status;
+        u32 outsize;
+        std::tie(status, outsize) = ilog->read_next(nitems, rows.data());
+        if (status == AKU_SUCCESS || (status == AKU_ENO_DATA && outsize > 0)) {
+            for (u32 ix = 0; ix < outsize; ix++) {
+                const InputLogRow& row = rows.at(ix);
+                if (idfilter.count(row.id)) {
+                    visitor.reset(row.id);
+                    proceed = row.payload.apply_visitor(visitor);
+                }
+            }
+            nsegments++;
+        }
+        else if (status == AKU_ENO_DATA) {
+            Logger::msg(AKU_LOG_INFO, "WAL recovery completed");
+            Logger::msg(AKU_LOG_INFO, std::to_string(nsegments) + " segments scanned");
+            Logger::msg(AKU_LOG_INFO, std::to_string(visitor.nsamples) + " samples recovered");
+            Logger::msg(AKU_LOG_INFO, std::to_string(visitor.nlost) + " samples lost");
+            proceed = false;
+        }
+        else {
+            Logger::msg(AKU_LOG_ERROR, "WAL recovery error: " + StatusUtil::str(status));
+            proceed = false;
+        }
+    }
+    
+    // Close column store.
+    // Some columns were restored using the NBTree crash recovery algorithm
+    // and WAL replay. To delete old WAL volumes we have to close these columns.
+    // Another problem that is solved here is memory usage. WAL has a mechanism that is
+    // used to offload columns that was opened and didn't received any updates for a while.
+    // If all columns will be opened at start, this will be meaningless.
+    auto mapping = cstore_->close();
+    if (!mapping.empty()) {
+        for (auto kv: mapping) {
+            u64 id;
+            std::vector<u64> vals;
+            std::tie(id, vals) = kv;
+            metadata_->add_rescue_point(id, std::move(vals));
+        }
+        if (done_.load() == 1) {
+            // Save finall mapping (should contain all affected columns)
+            metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
+        }
+    }
+    bstore_->flush();
+
+    ilog->reopen();
+    ilog->delete_files();
 }
 
 static std::string to_isostring(aku_Timestamp ts) {
@@ -445,7 +881,7 @@ void dump_tree(std::ostream &stream,
                 stream << _tag("fail") << StatusUtil::c_str(status) << "</fail>" << std::endl;
                 continue;
             }
-            auto subtreeref = reinterpret_cast<SubtreeRef*>(block->get_data());
+            auto subtreeref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
             if (subtreeref->type == NBTreeBlockType::LEAF) {
                 // Dump leaf node's content
                 NBTreeLeaf leaf(block);
@@ -732,6 +1168,11 @@ void Storage::start_sync_worker() {
             if (status == AKU_SUCCESS) {
                 bstore_->flush();
                 metadata_->sync_with_metadata_storage(get_names);
+                std::lock_guard<std::mutex> lock(session_lock_);
+                for (auto& it: sessions_await_list_) {
+                    it.set_value();
+                }
+                sessions_await_list_.clear();
             }
         }
 
@@ -739,6 +1180,22 @@ void Storage::start_sync_worker() {
     };
     std::thread sync_worker_thread(sync_worker);
     sync_worker_thread.detach();
+}
+
+void Storage::add_metadata_sync_barrier(std::promise<void>&& barrier) {
+    std::lock_guard<std::mutex> lock(session_lock_);
+    if (done_.load() != 0) {
+        barrier.set_value();
+    } else {
+        sessions_await_list_.push_back(std::move(barrier));
+    }
+}
+
+void Storage::_kill() {
+    Logger::msg(AKU_LOG_ERROR, "Kill storage");
+    done_.store(1);
+    metadata_->force_sync();
+    close_barrier_.wait();
 }
 
 void Storage::close() {
@@ -762,6 +1219,32 @@ void Storage::close() {
         metadata_->sync_with_metadata_storage(boost::bind(&SeriesMatcher::pull_new_names, &global_matcher_, _1));
     }
     bstore_->flush();
+
+    // Delete WAL volumes
+    inputlog_.reset();
+    if (!input_log_path_.empty()) {
+        int ccr = 0;
+        aku_Status status;
+        std::tie(status, ccr) = ShardedInputLog::find_logs(input_log_path_.c_str());
+        if (status == AKU_SUCCESS && ccr > 0) {
+            auto ilog = std::make_shared<ShardedInputLog>(ccr, input_log_path_.c_str());
+            ilog->delete_files();
+        }
+    }
+}
+
+void Storage::close_specific_columns(const std::vector<u64>& ids) {
+    Logger::msg(AKU_LOG_TRACE, "Going to close " + std::to_string(ids.size()) + " ids");
+    auto mapping = cstore_->close(ids);
+    Logger::msg(AKU_LOG_TRACE, std::to_string(ids.size()) + " ids were closed");
+    if (!mapping.empty()) {
+        for (auto kv: mapping) {
+            u64 id;
+            std::vector<u64> vals;
+            std::tie(id, vals) = kv;
+            _update_rescue_points(id, std::move(vals));
+        }
+    }
 }
 
 
@@ -770,11 +1253,14 @@ void Storage::_update_rescue_points(aku_ParamId id, std::vector<StorageEngine::L
 }
 
 std::shared_ptr<StorageSession> Storage::create_write_session() {
-    std::shared_ptr<StorageEngine::CStoreSession> session = std::make_shared<StorageEngine::CStoreSession>(cstore_);
-    return std::make_shared<StorageSession>(shared_from_this(), session);
+    std::shared_ptr<StorageEngine::CStoreSession> session =
+            std::make_shared<StorageEngine::CStoreSession>(cstore_);
+    return std::make_shared<StorageSession>(shared_from_this(),
+                                            session,
+                                            inputlog_.get());
 }
 
-aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher) {
+std::tuple<aku_Status, bool> Storage::init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher) {
     u64 id = 0;
     bool create_new = false;
     {
@@ -789,11 +1275,14 @@ aku_Status Storage::init_series_id(const char* begin, const char* end, aku_Sampl
     }
     if (create_new) {
         // id guaranteed to be unique
-        cstore_->create_new_column(id);
+        auto status = cstore_->create_new_column(id);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, false);
+        }
     }
     sample->paramid = id;
     local_matcher->_add(begin, end, id);
-    return AKU_SUCCESS;
+    return std::make_tuple(AKU_SUCCESS, create_new);
 }
 
 int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, PlainSeriesMatcher *local_matcher) {
@@ -805,7 +1294,7 @@ int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, P
     local_matcher->_add(str.first, str.first + str.second, id);
     // copy the string to out buffer
     if (str.second > buffer_size) {
-        return -1*str.second;
+        return -1*static_cast<int>(str.second);
     }
     memcpy(buffer, str.first, static_cast<size_t>(str.second));
     return static_cast<int>(str.second);
@@ -1103,7 +1592,7 @@ aku_Status Storage::new_database( const char     *base_file_name
     return AKU_SUCCESS;
 }
 
-aku_Status Storage::remove_storage(const char* file_name, bool force) {
+aku_Status Storage::remove_storage(const char* file_name, const char* wal_path, bool force) {
     if (!boost::filesystem::exists(file_name)) {
         return AKU_ENOT_FOUND;
     }
@@ -1159,6 +1648,14 @@ aku_Status Storage::remove_storage(const char* file_name, bool force) {
     };
 
     std::for_each(volume_names.begin(), volume_names.end(), delete_file);
+
+    int card;
+    std::tie(status, card) = ShardedInputLog::find_logs(wal_path);
+    if (status == AKU_SUCCESS && card > 0) {
+        // Start recovery
+        auto ilog = std::make_shared<ShardedInputLog>(card, wal_path);
+        ilog->delete_files();
+    }
 
     return AKU_SUCCESS;
 }

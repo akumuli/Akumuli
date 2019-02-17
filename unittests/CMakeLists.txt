@@ -63,7 +63,7 @@ add_test(protocol-parser test_protocolparser)
 add_executable(
     test_tcp_server
     test_tcp_server.cpp
-    ../akumulid/ingestion_pipeline.cpp
+    ../akumulid/storage_api.cpp
     ../akumulid/tcp_server.cpp
     ../akumulid/signal_handler.cpp
     ../akumulid/resp.cpp
@@ -90,7 +90,7 @@ add_executable(
     test_querycursor
     test_querycursor.cpp
     ../akumulid/query_results_pooler.cpp
-    ../akumulid/ingestion_pipeline.cpp
+    ../akumulid/storage_api.cpp
     ../akumulid/logger.cpp
 )
 target_link_libraries(
@@ -200,6 +200,7 @@ add_executable(
     ../libakumuli/storage_engine/operators/join.cpp
     ../libakumuli/storage_engine/operators/merge.cpp
     ../libakumuli/storage_engine/column_store.cpp
+    ../libakumuli/storage_engine/input_log.cpp
     ../libakumuli/query_processing/queryparser.cpp
     ../libakumuli/query_processing/queryplan.cpp
     # query processor
@@ -219,6 +220,8 @@ add_executable(
 
 target_link_libraries(
     test_storage
+    roaring
+    lz4
     sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
@@ -396,4 +399,28 @@ target_link_libraries(
 )
 
 add_test(ref_store test_ref_store)
+
+# Test input log
+add_executable(
+    test_input_log
+    test_input_log.cpp
+    ../libakumuli/storage_engine/input_log.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/status_util.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/crc32c.cpp
+)
+
+target_compile_definitions(test_input_log PRIVATE AKU_UNIT_TEST_CONTEXT=1)
+
+target_link_libraries(
+    test_input_log
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    roaring
+    lz4
+    pthread
+)
+
+add_test(input_log test_input_log)
 

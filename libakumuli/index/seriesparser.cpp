@@ -320,12 +320,18 @@ static StringTools::StringT get_tag_name(const char* p, const char* end) {
 static const char ESC_CHAR = '\\';
 
 static const char* copy_until(const char* begin, const char* end, const char pattern, char** out) {
+    if (begin == end) {
+        return begin;
+    }
     const char* escape_char = *begin == ESC_CHAR ? begin : nullptr;
     char* it_out = *out;
-    while(begin < end) {
+    while (true) {
         *it_out = *begin;
         it_out++;
         begin++;
+        if (begin == end) {
+            break;
+        }
         if (*begin == pattern) {
             if (std::prev(begin) != escape_char) {
                 break;

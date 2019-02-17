@@ -22,6 +22,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <future>
 
 #include "akumuli_def.h"
 #include "metadatastorage.h"
@@ -31,10 +32,12 @@
 #include "storage_engine/blockstore.h"
 #include "storage_engine/nbtree.h"
 #include "storage_engine/column_store.h"
+#include "storage_engine/input_log.h"
 
 #include "internal_cursor.h"
 
 #include <boost/thread.hpp>
+#include <boost/thread/tss.hpp>
 
 namespace Akumuli {
 
@@ -46,8 +49,14 @@ class StorageSession : public std::enable_shared_from_this<StorageSession> {
     std::shared_ptr<StorageEngine::CStoreSession> session_;
     //! Temporary query matcher
     mutable std::shared_ptr<PlainSeriesMatcher> matcher_substitute_;
+    InputLog* const ilog_;
+
 public:
-    StorageSession(std::shared_ptr<Storage> storage, std::shared_ptr<StorageEngine::CStoreSession> session);
+    StorageSession(std::shared_ptr<Storage> storage,
+                   std::shared_ptr<StorageEngine::CStoreSession> session,
+                   ShardedInputLog* log);
+
+    ~StorageSession();
 
     aku_Status write(aku_Sample const& sample);
 
@@ -93,18 +102,33 @@ class Storage : public std::enable_shared_from_this<Storage> {
     mutable std::mutex lock_;
     SeriesMatcher global_matcher_;
     std::shared_ptr<MetadataStorage> metadata_;
+    std::shared_ptr<ShardedInputLog> inputlog_;
+    std::string input_log_path_;
+
+    // Await support
+    std::vector<std::promise<void>> sessions_await_list_;
+    std::mutex session_lock_;
 
     void start_sync_worker();
 
     std::tuple<aku_Status, std::string> parse_query(const boost::property_tree::ptree &ptree,
                                                     QP::ReshapeRequest* req) const;
+
+    void run_inputlog_recovery(ShardedInputLog* ilog, std::vector<aku_ParamId> ids2restore);
+
+    void run_inputlog_metadata_recovery(ShardedInputLog* ilog, std::vector<aku_ParamId> *restored_ids,
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping);
 public:
 
     // Create empty in-memory storage
     Storage();
 
-    // Open file-backed storage
-    Storage(const char* path);
+    /**
+     * @brief Open storage engine
+     * @param path is a path to main files
+     */
+    Storage(const char*                                 path,
+            const aku_FineTuneParams&                   params);
 
     /** C-tor for test */
     Storage(std::shared_ptr<MetadataStorage>            meta,
@@ -112,8 +136,14 @@ public:
             std::shared_ptr<StorageEngine::ColumnStore> cstore,
             bool                                        start_worker);
 
+    void run_recovery(const aku_FineTuneParams &params,
+        std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>>* mapping);
+
+    //! Perform input log recovery if needed and initialize input log
+    void initialize_input_log(const aku_FineTuneParams& params);
+
     //! Match series name. If series with such name doesn't exists - create it.
-    aku_Status init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher);
+    std::tuple<aku_Status, bool> init_series_id(const char* begin, const char* end, aku_Sample *sample, PlainSeriesMatcher *local_matcher);
 
     int get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, PlainSeriesMatcher *local_matcher);
 
@@ -147,6 +177,13 @@ public:
       */
     void close();
 
+    /**
+     * @brief Flush and close every column in the list
+     * @param ids list of column ids
+     * @return status
+     */
+    void close_specific_columns(const std::vector<u64>& ids);
+
     /** Create empty database from scratch.
       * @param base_file_name is database name (excl suffix)
       * @param metadata_path is a path to metadata storage
@@ -177,9 +214,15 @@ public:
       * @return AKU_SUCCESS on success or AKU_ENOT_PERMITTED if database contains data and `force` is false or
       *         AKU_EACCESS if database there is not enough priveleges to delete the files
       */
-    static aku_Status remove_storage(const char* file_name, bool force);
+    static aku_Status remove_storage(const char* file_name, const char *wal_path, bool force);
 
     boost::property_tree::ptree get_stats();
+
+    /** Destroy object without preserving consistency
+     */
+    void _kill();
+
+    void add_metadata_sync_barrier(std::promise<void>&& barrier);
 };
 
 }

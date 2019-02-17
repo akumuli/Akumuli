@@ -4,7 +4,7 @@
 #include <boost/algorithm/string.hpp>
 
 #include "resp.h"
-#include "ingestion_pipeline.h"
+#include "storage_api.h"
 
 namespace Akumuli {
 

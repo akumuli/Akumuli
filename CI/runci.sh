@@ -22,17 +22,25 @@ sh ./CI/prerequisites-$1.sh
 mkdir build
 cd build
 
-if [[ $GENERIC_BUILD == true ]]; then
-    echo "GENERIC BUILD"
-    cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen;
+if [[ $DEBUG_BUILD == true ]]; then
+    echo "DEBUG_BUILD"
+    cmake .. -DCMAKE_BUILD_TYPE=Debug;
     if [ $? -ne 0 ]; then
         exit 1
     fi
 else
-    echo "SKYLAKE BUILD"
-    cmake .. -DCMAKE_BUILD_TYPE=Release;
-    if [ $? -ne 0 ]; then
-        exit 1
+    if [[ $GENERIC_BUILD == true ]]; then
+        echo "GENERIC BUILD"
+        cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen;
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
+    else
+        echo "SKYLAKE BUILD"
+        cmake .. -DCMAKE_BUILD_TYPE=Release;
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
     fi
 fi
 

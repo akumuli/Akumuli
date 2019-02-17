@@ -24,7 +24,12 @@ ColumnStore::ColumnStore(std::shared_ptr<BlockStore> bstore)
 {
 }
 
-aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> const& mapping, bool force_init) {
+std::tuple<aku_Status, std::vector<aku_ParamId>> ColumnStore::open_or_restore(
+        std::unordered_map<aku_ParamId,
+        std::vector<StorageEngine::LogicAddr>> const& mapping,
+        bool force_init)
+{
+    std::vector<aku_ParamId> ids2recover;
     for (auto it: mapping) {
         aku_ParamId id = it.first;
         std::vector<LogicAddr> const& rescue_points = it.second;
@@ -40,15 +45,25 @@ aku_Status ColumnStore::open_or_restore(std::unordered_map<aku_ParamId, std::vec
         std::lock_guard<std::mutex> tl(table_lock_);
         if (columns_.count(id)) {
             Logger::msg(AKU_LOG_ERROR, "Can't open/repair " + std::to_string(id) + " (already exists)");
-            return AKU_EBAD_ARG;
+            return std::make_tuple(AKU_EBAD_ARG, std::vector<aku_ParamId>());
         } else {
             columns_[id] = std::move(tree);
         }
-        if (force_init) {
+        if (force_init || status == NBTreeExtentsList::RepairStatus::REPAIR) {
+            // Repair is performed on initialization. We don't want to postprone this process
+            // since it will introduce runtime penalties.
             columns_[id]->force_init();
+            if (status == NBTreeExtentsList::RepairStatus::REPAIR) {
+                ids2recover.push_back(id);
+            }
+            if (force_init == false) {
+                // Close the tree until it will be acessed first
+                auto rplist = columns_[id]->close();
+                rescue_points_[id] = std::move(rplist);
+            }
         }
     }
-    return AKU_SUCCESS;
+    return std::make_tuple(AKU_SUCCESS, ids2recover);
 }
 
 std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close() {
@@ -76,6 +91,24 @@ std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnSto
         }
     }
     Logger::msg(AKU_LOG_INFO, "Column-store commit completed");
+    return result;
+}
+
+std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> ColumnStore::close(const std::vector<u64>& ids) {
+    std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> result;
+    Logger::msg(AKU_LOG_INFO, "Column-store close specific columns");
+    for (auto id: ids) {
+        std::lock_guard<std::mutex> tl(table_lock_);
+        auto it = columns_.find(id);
+        if (it == columns_.end()) {
+            continue;
+        }
+        if (it->second->is_initialized()) {
+            auto addrlist = it->second->close();
+            result[it->first] = addrlist;
+        }
+    }
+    Logger::msg(AKU_LOG_INFO, "Column-store close specific columns, operation completed");
     return result;
 }
 
@@ -112,9 +145,6 @@ NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<Logi
     aku_ParamId id = sample.paramid;
     auto it = columns_.find(id);
     if (it != columns_.end()) {
-        if (!it->second->is_initialized()) {
-            it->second->force_init();
-        }
         auto tree = it->second;
         auto res = tree->append(sample.timestamp, sample.payload.float64);
         if (res == NBTreeAppendResult::OK_FLUSH_NEEDED) {
@@ -131,6 +161,17 @@ NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<Logi
     return NBTreeAppendResult::FAIL_BAD_ID;
 }
 
+NBTreeAppendResult ColumnStore::recovery_write(aku_Sample const& sample, bool allow_duplicates)
+{
+    std::lock_guard<std::mutex> lock(table_lock_);
+    aku_ParamId id = sample.paramid;
+    auto it = columns_.find(id);
+    if (it != columns_.end()) {
+        auto tree = it->second;
+        return tree->append(sample.timestamp, sample.payload.float64, allow_duplicates);
+    }
+    return NBTreeAppendResult::FAIL_BAD_ID;
+}
 
 // ////////////////////// //
 //      WriteSession      //

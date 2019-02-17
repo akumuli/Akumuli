@@ -24,7 +24,7 @@ using namespace QP;
 
 void test_logger(aku_LogLevel tag, const char* msg) {
     AKU_UNUSED(tag);
-    BOOST_TEST_MESSAGE(msg);
+    AKU_UNUSED(msg);
 }
 
 struct AkumuliInitializer {
@@ -59,11 +59,11 @@ std::shared_ptr<ColumnStore> create_cstore() {
     return cstore;
 }
 
-std::shared_ptr<Storage> create_storage() {
+std::shared_ptr<Storage> create_storage(bool start_worker=false) {
     auto meta = create_metadatastorage();
     auto bstore = BlockStoreBuilder::create_memstore();
     auto cstore = create_cstore();
-    auto store = std::make_shared<Storage>(meta, bstore, cstore, false);
+    auto store = std::make_shared<Storage>(meta, bstore, cstore, start_worker);
     return store;
 }
 
@@ -1004,3 +1004,128 @@ BOOST_AUTO_TEST_CASE(Test_series_add_5) {
 
 // Test reopen
 
+void test_wal_recovery(int cardinality, aku_Timestamp begin, aku_Timestamp end) {
+    BOOST_REQUIRE(cardinality);
+    std::vector<std::string> series_names;
+    for (int i = 0; i < cardinality; i++) {
+        series_names.push_back(
+            "test tag=" + std::to_string(i));
+    }
+    auto meta = create_metadatastorage();
+    auto bstore = BlockStoreBuilder::create_memstore();
+    auto cstore = create_cstore();
+    auto store = std::make_shared<Storage>(meta, bstore, cstore, true);
+    aku_FineTuneParams params;
+    params.input_log_concurrency = 1;
+    params.input_log_path = "./";
+    params.input_log_volume_numb = 32;
+    params.input_log_volume_size = 1024*1024*24;
+    store->initialize_input_log(params);
+    auto session = store->create_write_session();
+
+    fill_data(session, begin, end, series_names);
+    session.reset();  // This should flush current WAL frame
+    store->_kill();
+
+    std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> mapping;
+    store = std::make_shared<Storage>(meta, bstore, cstore, true);
+    store->run_recovery(params, &mapping);
+    store->initialize_input_log(params);
+    session = store->create_write_session();
+
+    CursorMock cursor;
+    auto query = make_scan_query(begin, end, OrderBy::SERIES);
+    session->query(&cursor, query.c_str());
+    BOOST_REQUIRE(cursor.done);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+    auto expected_size = (end - begin)*series_names.size();
+    std::vector<aku_Timestamp> expected;
+    for (aku_Timestamp ts = begin; ts < end; ts++) {
+        expected.push_back(ts);
+    }
+    if (cursor.samples.size() < expected.size()) {
+        BOOST_FAIL("Samples lost");
+    }
+    check_timestamps(cursor, expected, OrderBy::SERIES, series_names);
+    check_paramids(*session, cursor, OrderBy::SERIES, series_names, expected_size, false);
+
+    session.reset();
+    store->close();
+}
+
+BOOST_AUTO_TEST_CASE(Test_wal_recovery_0) {
+    test_wal_recovery(100, 1000, 2000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_wal_recovery_1) {
+    test_wal_recovery(100, 1000, 11000);
+}
+
+BOOST_AUTO_TEST_CASE(Test_wal_recovery_2) {
+    test_wal_recovery(100, 1000, 101000);
+}
+
+/**
+ * @brief Test WAL effect on write amplification
+ * @param usewal is a flag that controls use of WAL in the test
+ * @param total_cardinality is a total number of series
+ * @param batch_size is a number of series in the batch
+ * @param begin timestamp
+ * @param end timestamp
+ *
+ * This test writes `total_cardinlity` series in batches.
+ * When new batch is being written the previous one should
+ * be evicted from the working set (the corresponding
+ * nbtree instances should be closed) if WAL is enabled. So,
+ * resulting write amplification should be high.
+ * If WAL is not used the number of written pages should match
+ * `total_cardinality`
+ */
+void test_wal_write_amplification_impact(bool usewal, int total_cardinality, int batch_size, aku_Timestamp begin, aku_Timestamp end) {
+    int nbatches = total_cardinality / batch_size;
+    int append_cnt = 0;
+    auto counter_fn = [&](LogicAddr) {
+        append_cnt++;
+    };
+    auto bstore = BlockStoreBuilder::create_memstore(counter_fn);
+    auto meta = create_metadatastorage();
+    std::shared_ptr<ColumnStore> cstore;
+    cstore.reset(new ColumnStore(bstore));
+    auto store = std::make_shared<Storage>(meta, bstore, cstore, true);
+    aku_FineTuneParams params;
+    params.input_log_concurrency = 1;
+    params.input_log_path = usewal ? "./" : nullptr;
+    params.input_log_volume_numb = 4;
+    params.input_log_volume_size = 10*0x1000;
+    store->initialize_input_log(params);
+
+    for (int ixbatch = 0; ixbatch < nbatches; ixbatch++) {
+        auto session = store->create_write_session();
+        std::vector<std::string> series_names;
+        for (int i = 0; i < batch_size; i++) {
+            series_names.push_back(
+                "test tag=" + std::to_string(ixbatch*batch_size + i));
+        }
+        fill_data(session, begin, end, series_names);
+        session.reset();  // This should flush current WAL frame
+    }
+    if (usewal) {
+        BOOST_REQUIRE(append_cnt != 0);
+    } else {
+        BOOST_REQUIRE(append_cnt == 0);
+    }
+    store->close();
+    if (usewal) {
+        BOOST_REQUIRE(append_cnt > total_cardinality);
+    } else {
+        BOOST_REQUIRE(append_cnt == total_cardinality);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_high_cardinality_0) {
+    test_wal_write_amplification_impact(true, 10000, 1000, 1000, 1010);
+}
+
+BOOST_AUTO_TEST_CASE(Test_high_cardinality_1) {
+    test_wal_write_amplification_impact(false, 10000, 1000, 1000, 1010);
+}

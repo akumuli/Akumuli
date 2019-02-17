@@ -6,7 +6,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/trim.hpp>
 
-#include "ingestion_pipeline.h"
+#include "storage_api.h"
 #include "protocolparser.h"
 #include "resp.h"
 

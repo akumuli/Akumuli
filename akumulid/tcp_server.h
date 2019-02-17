@@ -72,6 +72,8 @@ struct ProtocolSession {
  */
 struct ProtocolSessionBuilder {
 
+    virtual ~ProtocolSessionBuilder() = default;
+
     /**
      * @brief create new ProtocolSession instance
      * @param io is an IOServiceT instance
@@ -119,6 +121,7 @@ class TcpAcceptor : public std::enable_shared_from_this<TcpAcceptor> {
     boost::barrier stop_barrier_;   //< Barrier to stop worker thread
 
     Logger logger_;
+    bool   iothread_started_;       //< Flag will be set to true if I/O thread was started
 
 public:
     /** C-tor. Should be created in the heap.

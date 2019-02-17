@@ -61,8 +61,6 @@ class ColumnStore : public std::enable_shared_from_this<ColumnStore> {
     PlainSeriesMatcher global_matcher_;
     //! List of metadata to update
     std::unordered_map<aku_ParamId, std::vector<StorageEngine::LogicAddr>> rescue_points_;
-    //! Mutex for metadata storage and rescue points list
-    mutable std::mutex metadata_lock_;
     //! Mutex for table_ hashmap (shrink and resize)
     mutable std::mutex table_lock_;
     //! Syncronization for watcher thread
@@ -77,9 +75,18 @@ public:
     ColumnStore& operator = (ColumnStore const&) = delete;
 
     //! Open storage or restore if needed
-    aku_Status open_or_restore(const std::unordered_map<aku_ParamId, std::vector<LogicAddr> > &mapping, bool force_init=false);
+    std::tuple<aku_Status, std::vector<aku_ParamId>> open_or_restore(
+            const std::unordered_map<aku_ParamId, std::vector<LogicAddr>> &mapping,
+            bool force_init=false);
 
     std::unordered_map<aku_ParamId, std::vector<LogicAddr> > close();
+
+    /**
+     * @brief close specific columns
+     * @param ids is a list of column ids
+     * @return list of rescue points for every id
+     */
+    std::unordered_map<aku_ParamId, std::vector<LogicAddr> > close(const std::vector<aku_ParamId>& ids);
 
     /** Create new column.
       * @return completion status
@@ -92,6 +99,13 @@ public:
       */
     NBTreeAppendResult write(aku_Sample const& sample, std::vector<LogicAddr> *rescue_points,
                      std::unordered_map<aku_ParamId, std::shared_ptr<NBTreeExtentsList> > *cache_or_null=nullptr);
+
+    /**
+     * @brief Write sample to data-store during crash recovery
+     * @param sample to write
+     * @return write status
+     */
+    NBTreeAppendResult recovery_write(aku_Sample const& sample, bool allow_duplicates);
 
     size_t _get_uncommitted_memory() const;
 

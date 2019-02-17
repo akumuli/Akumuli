@@ -2,8 +2,8 @@ project(Akumuli)
 cmake_minimum_required(VERSION 2.8)
 
 set(APP_VERSION_MAJOR "0")
-set(APP_VERSION_MINOR "7")
-set(APP_VERSION_PATCH "57")
+set(APP_VERSION_MINOR "8")
+set(APP_VERSION_PATCH "58")
 
 set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
@@ -24,26 +24,36 @@ set(CMAKE_MACOSX_RPATH 1)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
-if (!APPLE)
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -static-libasan")
-else(!APPLE)
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wno-pessimizing-move")
-add_compile_options(-Wno-delete-non-virtual-dtor)
-add_compile_options(-Wno-deprecated)
-endif(!APPLE)
+if (APPLE)
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wno-delete-non-virtual-dtor -Wno-deprecated -Wno-pessimizing-move")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wno-delete-non-virtual-dtor -Wno-deprecated -Wno-pessimizing-move")
+endif(APPLE)
 
-#set(CMAKE_CXX_FLAGS_DEBUG
-#    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address")
+# Debug flags
 set(CMAKE_CXX_FLAGS_DEBUG
-    "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Werror -Wall  -ggdb")
+ "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address -std=c++11")
+set(CMAKE_C_FLAGS_DEBUG
+ "${CMAKE_C_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address -std=c99")
 
+# Generic release flags
 set(CMAKE_CXX_FLAGS_RELEASEGEN
-    "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3")
+ "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3 -std=c++11")
+set(CMAKE_C_FLAGS_RELEASEGEN
+ "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3 -std=c99")
 
+# Release flags
 if("${APP_ARCH}" STREQUAL "amd64")
     # Use this flags only on amd64
     set(CMAKE_CXX_FLAGS_RELEASE 
-        "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3")
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
+else()
+    # This work on arm64
+    set(CMAKE_CXX_FLAGS_RELEASE
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
 endif()
 
 if("${APP_ARCH}" STREQUAL "arm64")
@@ -79,7 +89,7 @@ include_directories("${APRUTIL_INCLUDE_DIR}")
 include_directories("${SQLITE3_INCLUDE_DIR}")
 include_directories("${LIBMICROHTTPD_INCLUDE_DIRS}")
 
-add_definitions(-std=c++1y -fvisibility=hidden)
+add_definitions(-fvisibility=hidden)
 
 # json parser from boost::property_tree needs this badly
 add_definitions(-DBOOST_SPIRIT_THREADSAFE)

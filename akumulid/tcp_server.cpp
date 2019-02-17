@@ -273,6 +273,7 @@ TcpAcceptor::TcpAcceptor(// Server parameters
     , start_barrier_(2)
     , stop_barrier_(2)
     , logger_("tcp-acceptor")
+    , iothread_started_(false)
 {
     logger_.info() << "Server created!";
     logger_.info() << "Port: " << port;
@@ -298,6 +299,7 @@ TcpAcceptor::TcpAcceptor(
     , start_barrier_(2)
     , stop_barrier_(2)
     , logger_("tcp-acceptor")
+    , iothread_started_(false)
 {
     logger_.info() << "Server created!";
     logger_.info() << "Port: " << port;
@@ -342,6 +344,7 @@ void TcpAcceptor::start() {
     accept_thread.detach();
 
     start_barrier_.wait();
+    iothread_started_ = true;
 
     logger_.info() << "Start listening";
     _start();
@@ -366,7 +369,7 @@ void TcpAcceptor::_start() {
     acceptor_.async_accept(
                 session->socket(),
                 boost::bind(&TcpAcceptor::handle_accept,
-                            shared_from_this(),
+                            this,
                             session,
                             boost::asio::placeholders::error)
                 );
@@ -374,7 +377,7 @@ void TcpAcceptor::_start() {
 
 void TcpAcceptor::stop() {
     logger_.info() << "Stopping acceptor";
-    acceptor_.cancel();
+    acceptor_.close();
     own_io_.stop();
     sessions_work_.clear();
     logger_.info() << "Trying to stop acceptor";
@@ -385,6 +388,12 @@ void TcpAcceptor::stop() {
 void TcpAcceptor::_stop() {
     logger_.info() << "Stopping acceptor (test runner)";
     acceptor_.close();
+    if (!iothread_started_) {
+        // If I/O thread wasn't started we have to spin the loop
+        // to run pending I/O handlers to prevent memory leak.
+        // This code path should only work in unit-tests.
+        own_io_.poll();
+    }
     own_io_.stop();
     sessions_work_.clear();
 }

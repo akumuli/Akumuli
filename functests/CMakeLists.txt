@@ -8,6 +8,7 @@ target_link_libraries(storage_test
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
+    pthread
     )
 
 file(COPY
@@ -26,6 +27,10 @@ file(COPY
     test_join_query.py
     test_filter_query.py
     test_search_api.py
+    test_wal_recovery.py
+    test_wal_parallel.py
+    test_no_wal_recovery.py
+    test_high_cardinality.py
     roundtrip.sh
     DESTINATION
     ./

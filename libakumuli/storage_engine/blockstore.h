@@ -98,6 +98,8 @@ struct BlockStore {
     virtual BlockStoreStats get_stats() const = 0;
 
     virtual PerVolumeStats get_volume_stats() const = 0;
+
+    virtual LogicAddr get_top_address() const = 0;
 };
 
 class FileStorage : public BlockStore {
@@ -145,6 +147,8 @@ public:
     virtual BlockStoreStats get_stats() const;
 
     virtual PerVolumeStats get_volume_stats() const;
+
+    virtual LogicAddr get_top_address() const;
 };
 
 class FixedSizeFileStorage : public FileStorage,
@@ -202,6 +206,7 @@ public:
 struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     std::vector<u8> buffer_;
     std::function<void(LogicAddr)> append_callback_;
+    std::function<void(LogicAddr)> read_callback_;
     u32 write_pos_;
     u32 removed_pos_;
     u32 pad_;
@@ -210,6 +215,8 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     MemStore();
 
     MemStore(std::function<void(LogicAddr)> append_cb);
+    MemStore(std::function<void(LogicAddr)> append_cb,
+             std::function<void(LogicAddr)> read_cb);
 
     virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
     virtual std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr);
@@ -221,11 +228,16 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     virtual u32 checksum(const u8* data, size_t size) const;
     virtual BlockStoreStats get_stats() const;
     virtual PerVolumeStats get_volume_stats() const;
+    virtual LogicAddr get_top_address() const;
+
     /**
      * @brief truncate storage by removing first n elements
      * @return first valid address
      */
     LogicAddr remove(size_t n);
+    
+    u32 get_write_pos();
+    u32 reset_write_pos(u32 pos);
 };
 
 
@@ -261,8 +273,9 @@ public:
 
 //! Should be used to create blockstore
 struct BlockStoreBuilder {
-    static std::shared_ptr<BlockStore> create_memstore();
-    static std::shared_ptr<BlockStore> create_memstore(std::function<void(LogicAddr)> append_cb);
+    static std::shared_ptr<MemStore> create_memstore();
+    static std::shared_ptr<MemStore> create_memstore(std::function<void(LogicAddr)> append_cb);
+    static std::shared_ptr<MemStore> create_memstore(std::function<void(LogicAddr)> append_cb, std::function<void(LogicAddr)> read_cb);
 };
 
 }

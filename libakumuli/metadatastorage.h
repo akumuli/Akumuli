@@ -64,6 +64,7 @@ struct MetadataStorage : VolumeRegistry {
 
     // Synchronization
     mutable std::mutex                                sync_lock_;
+    mutable std::mutex                                tran_lock_;
     std::condition_variable                           sync_cvar_;
     std::unordered_map<aku_ParamId, std::vector<u64>> pending_rescue_points_;
     std::unordered_map<u32, VolumeDesc>               pending_volumes_;

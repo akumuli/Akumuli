@@ -16,7 +16,9 @@ add_library(akumuli SHARED
     storage_engine/nbtree.cpp
     storage_engine/compression.cpp
     storage_engine/column_store.cpp
+    storage_engine/input_log.cpp
     storage_engine/ref_store.cpp
+    storage_engine/input_log.h
     storage_engine/operators/operator.cpp
     storage_engine/operators/aggregate.cpp
     storage_engine/operators/scan.cpp
@@ -44,12 +46,31 @@ add_library(akumuli SHARED
     query_processing/queryparser.cpp
 )
 
+add_library(lz4 STATIC
+    lz4/lz4.c
+    lz4/lz4frame.c
+    lz4/lz4hc.c
+    lz4/xxhash.c
+)
+target_include_directories(lz4 PUBLIC lz4)
+set_property(TARGET lz4 PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET lz4 PROPERTY C_STANDARD 99)
+
+add_library(roaring STATIC
+    roaring/roaring.c
+)
+target_include_directories(roaring PUBLIC roaring)
+set_property(TARGET roaring PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET roaring PROPERTY C_STANDARD 99)
+
 target_link_libraries(akumuli
     jemalloc
     "${SQLITE3_LIBRARY}"
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
+    lz4
+    roaring
     pthread)
 
 # Shared object version: "major.minor.micro"
