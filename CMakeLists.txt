@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 2.8)
 
 set(APP_VERSION_MAJOR "0")
 set(APP_VERSION_MINOR "8")
-set(APP_VERSION_PATCH "58")
+set(APP_VERSION_PATCH "59")
 
 set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
@@ -94,6 +94,7 @@ add_definitions(-fvisibility=hidden)
 # json parser from boost::property_tree needs this badly
 add_definitions(-DBOOST_SPIRIT_THREADSAFE)
 add_definitions(-DBOOST_PHOENIX_THREADSAFE)
+add_definitions(-DBOOST_DATE_TIME_POSIX_TIME_STD_CONFIG)
 
 include(GNUInstallDirs)
 
