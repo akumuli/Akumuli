@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.59
+--------------
+
+BUG FIX
+
+* Fix incorrect ISO 8601 date-time parsing
+
 Version 0.8.58
 --------------
 

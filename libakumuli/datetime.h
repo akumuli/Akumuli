@@ -19,7 +19,6 @@
 #include "akumuli.h"
 #include "akumuli_def.h"
 
-#define BOOST_DATE_TIME_POSIX_TIME_STD_CONFIG
 #include <boost/date_time/posix_time/posix_time.hpp>
 
 #include <chrono>
