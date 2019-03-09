@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.60
+--------------
+
+BUG FIX
+
+* Fix buffer overflow in WAL
+
 Version 0.8.59
 --------------
 

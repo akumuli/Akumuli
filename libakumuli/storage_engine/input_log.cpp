@@ -7,6 +7,8 @@
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
 #include <chrono>
+// TODO: remove
+#include <iostream>
 
 namespace Akumuli {
 
@@ -306,15 +308,19 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
         Bits bits;
         // The write_offset and space_left values for the first added element
         u32 write_offset = 0;
-        u32 space_left   = static_cast<u32>(sizeof(*this) - sizeof(u64)*2);
-
+        u32 space_left   = static_cast<u32>(sizeof(data) - sizeof(u64)*2);
         if (size > 0) {
             auto index = static_cast<int>(size) - 1;
             bits.value = vector[-1 - index*2];
             write_offset = bits.components.off + bits.components.len;
             auto space_used = write_offset + size*sizeof(u64)*2 + sizeof(u64)*2;
-            assert(space_left >= space_used);
-            space_left -= space_used;
+            if(space_left < space_used) {
+                // This can happen when there is less than 16 bytes of free space
+                // left in the block.
+                space_left = 0;
+            } else {
+                space_left -= space_used;
+            }
         }
         return std::make_tuple(write_offset, space_left);
     }
@@ -354,6 +360,7 @@ struct MutableEntry : LZ4Volume::Frame::FlexibleEntry {
         u32 space_left;
         std::tie(write_offset, space_left) = get_space_and_offset();
         auto dest = data + write_offset;
+        assert(static_cast<i64>(write_offset) + static_cast<i64>(len) < 0x2000 - sizeof(FrameHeader));
         memcpy(dest, sname, len);
         int ix = size * -2;
         Bits bits;
