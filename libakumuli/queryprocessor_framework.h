@@ -61,6 +61,14 @@ struct Aggregation {
             return "min";
         case AggregationFunction::MIN_TIMESTAMP:
             return "min_timestamp";
+        case AggregationFunction::LAST:
+            return "last";
+        case AggregationFunction::FIRST:
+            return "first";
+        case AggregationFunction::LAST_TIMESTAMP:
+            return "last_timestamp";
+        case AggregationFunction::FIRST_TIMESTAMP:
+            return "first_timestamp";
         };
         AKU_PANIC("Invalid aggregation function");
     }
@@ -80,6 +88,14 @@ struct Aggregation {
             return std::make_tuple(AKU_SUCCESS, AggregationFunction::MAX_TIMESTAMP);
         } else if (str == "mean") {
             return std::make_tuple(AKU_SUCCESS, AggregationFunction::MEAN);
+        } else if (str == "last") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::LAST);
+        } else if (str == "first") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::FIRST);
+        } else if (str == "last_timestamp") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::LAST_TIMESTAMP);
+        } else if (str == "first_timestamp") {
+            return std::make_tuple(AKU_SUCCESS, AggregationFunction::FIRST_TIMESTAMP);
         }
         return std::make_tuple(AKU_EBAD_ARG, AggregationFunction::CNT);
     }

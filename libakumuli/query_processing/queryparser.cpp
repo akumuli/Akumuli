@@ -330,7 +330,7 @@ static std::tuple<aku_Status, std::string, std::string, ErrorMsg> parse_aggregat
         // select query
         for (auto kv: *aggregate) {
             auto metric_name = kv.first;
-            auto func = kv.second.get_value<std::string>("cnt");
+            auto func = kv.second.get_value<std::string>("count");
             // Note: only one key-value is parsed at this time, this can be extended to tuples in the future
             return std::make_tuple(AKU_SUCCESS, metric_name, func, ErrorMsg());
         }

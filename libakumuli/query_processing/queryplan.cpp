@@ -640,6 +640,14 @@ static std::tuple<aku_Status, std::vector<AggregateFilter>> convert_aggregate_fi
         case AggregationFunction::MAX_TIMESTAMP:
             Logger::msg(AKU_LOG_ERROR, "Aggregation function 'MIN(MAX)_TIMESTAMP' can't be used with the filter");
             break;
+        case AggregationFunction::FIRST_TIMESTAMP:
+        case AggregationFunction::LAST_TIMESTAMP:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'FIRST(LAST)_TIMESTAMP' can't be used with the filter");
+            break;
+        case AggregationFunction::FIRST:
+        case AggregationFunction::LAST:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'FIRST(LAST)' can't be used with the filter");
+            break;
         };
         return std::make_tuple(AKU_EBAD_ARG, std::move(result));
     }
