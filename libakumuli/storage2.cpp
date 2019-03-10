@@ -95,12 +95,23 @@ static apr_status_t create_metadata_page(const char* db_name
 
 //--------- StorageSession ----------
 
-
 static InputLog* get_input_log(ShardedInputLog* log) {
+    static size_t s_known_hashes[AKU_MAX_THREADS];
+    static std::atomic<int> s_hash_counter = {0};
     if (log != nullptr) {
         std::hash<std::thread::id> thash;
         size_t hash = thash(std::this_thread::get_id());
-        return &log->get_shard(static_cast<int>(hash));
+        // Check if the hash was seen previously
+        int nhashes = s_hash_counter.load();
+        for (int i = 0; i < nhashes; i++) {
+            if (s_known_hashes[i] == hash) {
+                return &log->get_shard(i);
+            }
+        }
+        // Insert new value
+        int ixnew = s_hash_counter++;
+        s_known_hashes[ixnew] = hash;
+        return &log->get_shard(ixnew);
     }
     return nullptr;
 }

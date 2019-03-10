@@ -7,8 +7,6 @@
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
 #include <chrono>
-// TODO: remove
-#include <iostream>
 
 namespace Akumuli {
 
