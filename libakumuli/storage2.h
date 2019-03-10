@@ -49,7 +49,8 @@ class StorageSession : public std::enable_shared_from_this<StorageSession> {
     std::shared_ptr<StorageEngine::CStoreSession> session_;
     //! Temporary query matcher
     mutable std::shared_ptr<PlainSeriesMatcher> matcher_substitute_;
-    InputLog* const ilog_;
+    ShardedInputLog* slog_;
+    InputLog* ilog_;
 
 public:
     StorageSession(std::shared_ptr<Storage> storage,
