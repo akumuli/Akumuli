@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.61
+--------------
+
+BUG FIX
+
+* Fix race condition in WAL
+
 Version 0.8.60
 --------------
 
