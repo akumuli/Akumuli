@@ -516,7 +516,8 @@ static std::pair<u64, u64> parse_limit_offset(boost::property_tree::ptree const&
     return std::make_pair(limit, offset);
 }
 
-static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp, ErrorMsg> parse_range_timestamp(boost::property_tree::ptree const& ptree)
+static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp, ErrorMsg> parse_range_timestamp(boost::property_tree::ptree const& ptree,
+                                                                                            bool allow_empty=false)
 {
     aku_Timestamp begin = 0, end = 0;
     bool begin_set = false, end_set = false;
@@ -550,6 +551,15 @@ static std::tuple<aku_Status, aku_Timestamp, aku_Timestamp, ErrorMsg> parse_rang
                 }
             }
         }
+    }
+    if (allow_empty && !begin_set && !end_set && !error) {
+        // Shortcut for the case when empty range statment means the whole interval.
+        // The branch is not triggered if it's empty because of parsing error. It's
+        // also not triggered if only one field is not set.
+        return std::make_tuple(AKU_SUCCESS,
+                               std::numeric_limits<aku_Timestamp>::min(),
+                               std::numeric_limits<aku_Timestamp>::max(),
+                               ErrorMsg());
     }
     if (!begin_set || !end_set) {
         if (error) {
