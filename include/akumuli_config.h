@@ -28,6 +28,8 @@
 #define AKU_DURABILITY_SPEED_TRADEOFF 2
 #define AKU_MAX_WRITE_SPEED 4
 
+#define AKU_MAX_THREADS 1024
+
 
 // Log levels
 typedef enum {

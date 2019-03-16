@@ -1,6 +1,27 @@
 Release notes
 =============
 
+Version 0.8.61
+--------------
+
+BUG FIX
+
+* Fix race condition in WAL
+
+Version 0.8.60
+--------------
+
+BUG FIX
+
+* Fix buffer overflow in WAL
+
+Version 0.8.59
+--------------
+
+BUG FIX
+
+* Fix incorrect ISO 8601 date-time parsing
+
 Version 0.8.58
 --------------
 

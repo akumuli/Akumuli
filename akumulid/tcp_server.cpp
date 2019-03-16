@@ -563,6 +563,9 @@ struct TcpServerBuilder {
         } else {
             nworkers = static_cast<int>(ncpus - 4);
         }
+        if (nworkers >= AKU_MAX_THREADS) {
+            nworkers = AKU_MAX_THREADS - 4;
+        }
         std::map<int, std::unique_ptr<ProtocolSessionBuilder>> protocol_map;
         for (const auto& protocol: settings.protocols) {
             std::unique_ptr<ProtocolSessionBuilder> inst;
