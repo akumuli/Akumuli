@@ -81,6 +81,7 @@ typedef struct {
 
 #define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::FLOAT_BIT)
 #define AKU_PAYLOAD_TUPLE (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::TUPLE_BIT)
+#define AKU_PAYLOAD_NONE  (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT)
 
 //! Cursor result type
 typedef struct {

@@ -328,6 +328,124 @@ def test_aggregate_all(dtstart, delta, N):
     if iterations != len(expected_tags)*2:
         raise ValueError("Results incomplete")
 
+@api_test("aggregate last")
+def test_aggregate_last(dtstart, delta, N):
+    """Aggregate all data and check result"""
+    begin = dtstart
+    end = dtstart + delta*N
+    query = att.make_aggregate_query("test", begin, end, "last", output=dict(format='csv'))
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
+    M = N - 10
+    expected_values = [
+        M,
+        M + 1,
+        M + 2,
+        M + 3,
+        M + 4,
+        M + 5,
+        M + 6,
+        M + 7,
+        M + 8,
+        M + 9,
+    ]
+    expected_timestamps = [
+        dtstart + (N-10)*delta,
+        dtstart + (N-9)*delta,
+        dtstart + (N-8)*delta,
+        dtstart + (N-7)*delta,
+        dtstart + (N-6)*delta,
+        dtstart + (N-5)*delta,
+        dtstart + (N-4)*delta,
+        dtstart + (N-3)*delta,
+        dtstart + (N-2)*delta,
+        dtstart + (N-1)*delta,
+    ]
+    iterations = 0
+    for line in response:
+        try:
+            columns = line.split(',')
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            exp_ts = expected_timestamps[iterations % len(expected_timestamps)]
+            value = float(columns[2].strip())
+            exp_tag = expected_tags[iterations % len(expected_tags)]
+            exp_val = expected_values[iterations % len(expected_values)]
+            if abs(value - exp_val) > 10E-5:
+                msg = "Invalid value, expected: {0}, actual: {1}".format(exp_val, value)
+                print(msg)
+                raise ValueError(msg)
+            if tagline.endswith(exp_tag) == False:
+                msg = "Unexpected tag value: {0}, expected: {1}".format(tagline, exp_tag)
+                raise ValueError(msg)
+            if timestamp != exp_ts:
+                msg = "Unexpected timestamp: {0}, expected: {1}".format(timestamp, exp_ts)
+                raise ValueError(msg)
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations != len(expected_tags)*2:
+        raise ValueError("Results incomplete")
+
+@api_test("aggregate last timestamp")
+def test_aggregate_last_timestamp(dtstart, delta, N):
+    """Aggregate all data and check result"""
+    begin = dtstart
+    end = dtstart + delta*N
+    query = att.make_aggregate_query("test", begin, end, "last_timestamp", output=dict(format='csv'))
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    expected_tags = [
+        "tag3=D",
+        "tag3=E",
+        "tag3=F",
+        "tag3=G",
+        "tag3=H",
+    ]
+    expected_timestamps = [
+        dtstart + (N-10)*delta,
+        dtstart + (N-9)*delta,
+        dtstart + (N-8)*delta,
+        dtstart + (N-7)*delta,
+        dtstart + (N-6)*delta,
+        dtstart + (N-5)*delta,
+        dtstart + (N-4)*delta,
+        dtstart + (N-3)*delta,
+        dtstart + (N-2)*delta,
+        dtstart + (N-1)*delta,
+    ]
+    iterations = 0
+    for line in response:
+        try:
+            columns = line.split(',')
+            if len(columns) != 2:
+                msg = "Invalid reply format, 2 columns expected, actual: {0}".format(len(columns))
+                raise ValueError(msg)
+            tagline = columns[0].strip()
+            timestamp = att.parse_timestamp(columns[1].strip())
+            exp_ts = expected_timestamps[iterations % len(expected_timestamps)]
+            exp_tag = expected_tags[iterations % len(expected_tags)]
+            if tagline.endswith(exp_tag) == False:
+                msg = "Unexpected tag value: {0}, expected: {1}".format(tagline, exp_tag)
+                raise ValueError(msg)
+            if timestamp != exp_ts:
+                msg = "Unexpected timestamp: {0}, expected: {1}".format(timestamp, exp_ts)
+                raise ValueError(msg)
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations != len(expected_tags)*2:
+        raise ValueError("Results incomplete")
+
 @api_test("aggregate all data with group-by")
 def test_aggregate_all_group_by(dtstart, delta, N):
     """Aggregate all data and check result"""
@@ -862,6 +980,8 @@ def main(path):
         test_read_in_forward_direction(dt, delta, nmsgs)
         test_late_write(dt, delta, nmsgs, chan)
         test_aggregate_all(dt, delta, nmsgs)
+        test_aggregate_last(dt, delta, nmsgs)
+        test_aggregate_last_timestamp(dt, delta, nmsgs)
         test_aggregate_all_group_by(dt, delta, nmsgs)
         test_aggregate_where(dt, delta, nmsgs)
         test_group_aggregate_all_forward (dt, delta, nmsgs, 10)

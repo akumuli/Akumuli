@@ -171,7 +171,7 @@ int DateTimeUtil::to_iso_string(aku_Timestamp ts, char* buffer, size_t buffer_si
 }
 
 aku_Duration DateTimeUtil::parse_duration(const char* str, size_t size) {
-    static const char* exp = R"(^(\d+)(n|us|s|min|ms|m|h)?$)";
+    static const char* exp = R"(^(\d+)(n|us|s|min|ms|m|h|d)?$)";
     static boost::regex regex(exp, boost::regex_constants::optimize);
     boost::cmatch m;
     if (!boost::regex_match(str, m, regex)) {
@@ -206,6 +206,9 @@ aku_Duration DateTimeUtil::parse_duration(const char* str, size_t size) {
             break;
         case 'h':  // hour
             K = 60*60*1000000000ul;
+            break;
+        case 'd':  // day
+            K = 24*60*60*1000000000ul;
             break;
         }
         if (K == 0ul) {

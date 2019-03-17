@@ -261,6 +261,22 @@ std::tuple<aku_Status, size_t> AggregateMaterializer::read(u8* dest, size_t size
             sample.timestamp = destval._end;
             sample.payload.float64 = destval.sum/destval.cnt;
         break;
+        case AggregationFunction::LAST:
+            sample.timestamp = destval._end;
+            sample.payload.float64 = destval.last;
+        break;
+        case AggregationFunction::FIRST:
+            sample.timestamp = destval._begin;
+            sample.payload.float64 = destval.first;
+        break;
+        case AggregationFunction::LAST_TIMESTAMP:
+            sample.timestamp = destval._end;
+            sample.payload.type = AKU_PAYLOAD_NONE;
+        break;
+        case AggregationFunction::FIRST_TIMESTAMP:
+            sample.timestamp = destval._begin;
+            sample.payload.type = AKU_PAYLOAD_NONE;
+        break;
         }
         memcpy(dest, &sample, sizeof(sample));
         // move to next

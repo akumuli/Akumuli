@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.62
+--------------
+
+IMPROVEMENT
+
+* Add new aggregation functions
+
 Version 0.8.61
 --------------
 

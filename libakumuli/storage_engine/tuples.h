@@ -66,6 +66,18 @@ struct TupleOutputUtils {
         case StorageEngine::AggregationFunction::MEAN:
             out = res.sum / res.cnt;
             break;
+        case StorageEngine::AggregationFunction::LAST:
+            out = res.last;
+            break;
+        case StorageEngine::AggregationFunction::FIRST:
+            out = res.first;
+            break;
+        case StorageEngine::AggregationFunction::LAST_TIMESTAMP:
+            out = res._end;
+            break;
+        case StorageEngine::AggregationFunction::FIRST_TIMESTAMP:
+            out = res._begin;
+            break;
         }
         return out;
     }

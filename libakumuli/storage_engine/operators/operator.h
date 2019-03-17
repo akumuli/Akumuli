@@ -24,7 +24,11 @@ enum class AggregationFunction {
     CNT,
     MIN_TIMESTAMP,
     MAX_TIMESTAMP,
-    MEAN
+    MEAN,
+    LAST,
+    FIRST,
+    LAST_TIMESTAMP,
+    FIRST_TIMESTAMP,
 };
 
 //! Result of the aggregation operation that has several components.
