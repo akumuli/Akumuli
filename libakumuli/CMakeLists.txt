@@ -14,6 +14,7 @@ add_library(akumuli SHARED
     storage_engine/blockstore.cpp
     storage_engine/volume.cpp
     storage_engine/nbtree.cpp
+    storage_engine/nbtree_iter.cpp
     storage_engine/compression.cpp
     storage_engine/column_store.cpp
     storage_engine/input_log.cpp

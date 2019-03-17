@@ -5,6 +5,7 @@
  * query operators.
  */
 
+#include "akumuli_version.h"
 #include "akumuli_def.h"  // for basic types
 #include "util.h"
 #include "blockstore.h"   // for LogicAddr
@@ -74,5 +75,42 @@ struct SubtreeRef {
     u32 checksum;
 } __attribute__((packed));
 
+constexpr SubtreeRef INIT_SUBTREE_REF = {
+    0,
+    //! Series Id
+    0,
+    //! First element's timestamp
+    0,
+    //! Last element's timestamp
+    0,
+    //! Object addr in blockstore
+    EMPTY_ADDR,
+    //! Smalles value
+    std::numeric_limits<double>::max(),
+    //! Registration time of the smallest value
+    std::numeric_limits<aku_Timestamp>::max(),
+    //! Largest value
+    std::numeric_limits<double>::lowest(),
+    //! Registration time of the largest value
+    std::numeric_limits<aku_Timestamp>::lowest(),
+    //! Summ of all elements in subtree
+    .0,
+    //! First value in subtree
+    .0,
+    //! Last value in subtree
+    .0,
+    //! Block type
+    NBTreeBlockType::LEAF,
+    //! Node level in the tree
+    0,
+    //! Payload size (real)
+    0,
+    //! Node version
+    AKUMULI_VERSION,
+    //! Fan out index of the element (current)
+    0,
+    //! Checksum of the block (not used for links to child nodes)
+    0
+};
 
 }} // namespace
