@@ -70,14 +70,6 @@ static std::string to_string(const SubtreeRef& ref) {
     return fmt.str();
 }
 
-SubtreeRef* subtree_cast(u8* p) {
-    return reinterpret_cast<SubtreeRef*>(p);
-}
-
-SubtreeRef const* subtree_cast(u8 const* p) {
-    return reinterpret_cast<SubtreeRef const*>(p);
-}
-
 //! Read block from blockstoroe with all the checks. Panic on error!
 static std::shared_ptr<Block> read_block_from_bstore(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
     aku_Status status;
