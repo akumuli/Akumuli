@@ -1,12 +1,12 @@
 Release notes
 =============
 
-Version 0.8.62
+Version 0.8.63
 --------------
 
-IMPROVEMENT
+BUG FIX
 
-* Add new aggregation functions
+* Fix fallocate block size
 
 Version 0.8.61
 --------------
