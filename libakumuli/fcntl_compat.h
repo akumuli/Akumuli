@@ -92,6 +92,8 @@ static int posix_fallocate(int fd, off_t offset, off_t len)
 {
     off_t c_test;
     int ret;
+    len *= 4096; //< byte not block-oriented
+
     if (!__builtin_saddll_overflow(offset, len, &c_test)) {
         fstore_t store = {F_ALLOCATECONTIG, F_PEOFPOSMODE, 0, offset + len};
         // Try to get a continous chunk of disk space
