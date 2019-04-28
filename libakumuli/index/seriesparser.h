@@ -270,8 +270,8 @@ struct GroupByTag {
     StringPoolOffset offset_;
     //! Previous string pool size
     size_t prev_size_;
-    //! Metric name
-    std::string metric_;
+    //! Metric names
+    std::vector<std::string> metrics_;
     //! List of tags of interest
     std::vector<std::string> tags_;
     //! Local string pool. All transient series names lives here.
@@ -281,6 +281,7 @@ struct GroupByTag {
 
     //! Main c-tor
     GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
+    GroupByTag(const SeriesMatcher &matcher, const std::vector<std::string>& metrics, std::vector<std::string> const& tags);
 
     void refresh_();
 

@@ -324,21 +324,26 @@ static std::tuple<aku_Status, std::vector<std::string>, ErrorMsg>
 /** Parse `aggregate` statement, format:
   * { "aggregate": { "metric": "func" }, ... }
   */
-static std::tuple<aku_Status, std::string, std::string, ErrorMsg> parse_aggregate_stmt(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, std::vector<std::string>, std::vector<std::string>, ErrorMsg> parse_aggregate_stmt(boost::property_tree::ptree const& ptree) {
+    const static std::vector<std::string> EMPTY;
     auto aggregate = ptree.get_child_optional("aggregate");
     if (aggregate) {
+        std::vector<std::string> metrics, functions;
         // select query
         for (auto kv: *aggregate) {
             auto metric_name = kv.first;
             auto func = kv.second.get_value<std::string>("count");
-            // Note: only one key-value is parsed at this time, this can be extended to tuples in the future
-            return std::make_tuple(AKU_SUCCESS, metric_name, func, ErrorMsg());
+            metrics.push_back(metric_name);
+            functions.push_back(func);
         }
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "", "Query object has empty `aggregate` field");
+        if (metrics.empty()) {
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, EMPTY, EMPTY, "Query object has empty `aggregate` field");
+        }
+        return std::make_tuple(AKU_SUCCESS, metrics, functions, ErrorMsg());
     } else {
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "", "Query object doesn't have `aggregate` field");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, EMPTY, EMPTY, "Query object doesn't have `aggregate` field");
     }
-    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "", "Can't parse `aggregate` field");
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, EMPTY, EMPTY, "Can't parse `aggregate` field");
 }
 
 /**
@@ -1234,16 +1239,20 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
     Logger::msg(AKU_LOG_INFO, to_json(ptree, true).c_str());
 
     // Metric name
-    std::string metric;
-    std::string aggfun;
-    std::tie(status, metric, aggfun, error) = parse_aggregate_stmt(ptree);
+    std::vector<std::string> metrics;
+    std::vector<std::string> aggfun;
+    std::tie(status, metrics, aggfun, error) = parse_aggregate_stmt(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
-    AggregationFunction func;
-    std::tie(status, func) = Aggregation::from_string(aggfun);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result, "Unknown aggregate function `" + aggfun + "`");
+    std::vector<AggregationFunction> func;
+    for (auto af: aggfun) {
+        AggregationFunction f;
+        std::tie(status, f) = Aggregation::from_string(af);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, result, "Unknown aggregate function `" + af + "`");
+        }
+        func.push_back(f);
     }
 
     // Group-by statement
@@ -1254,7 +1263,7 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
     }
     auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
-        groupbytag.reset(new GroupByTag(matcher, metric, tags));
+        groupbytag.reset(new GroupByTag(matcher, metrics, tags));
     }
 
     // Order-by statment is disallowed
@@ -1268,21 +1277,28 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
 
     // Where statement
     std::vector<aku_ParamId> ids;
-    std::tie(status, ids, error) = parse_where_clause(ptree, {metric}, matcher);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result, error);
+    std::vector<AggregationFunction> id2func;
+    for (u32 ix = 0; ix < metrics.size(); ix++) {
+        std::vector<aku_ParamId> subids;
+        std::tie(status, subids, error) = parse_where_clause(ptree, {metrics.at(ix)}, matcher);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, result, error);
+        }
+        std::vector<AggregationFunction> subfun(subids.size(), func.at(ix));
+        std::copy(subids.begin(), subids.end(), std::back_inserter(ids));
+        std::copy(subfun.begin(), subfun.end(), std::back_inserter(id2func));
     }
 
     // Read timestamps
     aku_Timestamp ts_begin, ts_end;
-    std::tie(status, ts_begin, ts_end, error) = parse_range_timestamp(ptree);
+    std::tie(status, ts_begin, ts_end, error) = parse_range_timestamp(ptree, true);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
 
     // Initialize request
     result.agg.enabled = true;
-    result.agg.func = { func };
+    result.agg.func = id2func;
 
     result.select.begin = ts_begin;
     result.select.end = ts_end;

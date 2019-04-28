@@ -231,6 +231,32 @@ void fill_data(std::shared_ptr<StorageSession> session, aku_Timestamp begin, aku
     }
 }
 
+void fill_data(std::shared_ptr<StorageSession> session,
+               std::vector<std::string> const& names,
+               std::vector<aku_Timestamp> const& tss,
+               std::vector<double> const& xss)
+{
+    for (u32 ix = 0; ix < tss.size(); ix++) {
+        auto ts = tss.at(ix);
+        auto xs = xss.at(ix);
+        for (auto it: names) {
+            aku_Sample sample;
+            sample.payload.type = AKU_PAYLOAD_FLOAT;
+            sample.timestamp = ts;
+            sample.payload.float64 = xs;
+            auto status = session->init_series_id(it.data(), it.data() + it.size(), &sample);
+            if (status != AKU_SUCCESS) {
+                BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            }
+            status = session->write(sample);
+            if (status != AKU_SUCCESS) {
+                BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
+            }
+        }
+    }
+}
+
+
 struct CursorMock : InternalCursor {
     bool done;
     std::vector<aku_Sample> samples;
@@ -719,6 +745,79 @@ BOOST_AUTO_TEST_CASE(Test_storage_groupby_query_0) {
 
 BOOST_AUTO_TEST_CASE(Test_storage_groupby_query_1) {
     test_storage_group_by_query(OrderBy::TIME);
+}
+
+// Test aggregate query
+
+BOOST_AUTO_TEST_CASE(Test_storage_aggregate_query) {
+    std::vector<std::string> series_names_1 = {
+        "cpu.user key=0 group=1",
+        "cpu.user key=1 group=1",
+        "cpu.user key=2 group=1",
+        "cpu.user key=3 group=1",
+        "cpu.syst key=0 group=1",
+        "cpu.syst key=1 group=1",
+        "cpu.syst key=2 group=1",
+        "cpu.syst key=3 group=1",
+    };
+    std::vector<std::string> series_names_0 = {
+        "cpu.user key=4 group=0",
+        "cpu.user key=5 group=0",
+        "cpu.user key=6 group=0",
+        "cpu.user key=7 group=0",
+        "cpu.syst key=4 group=0",
+        "cpu.syst key=5 group=0",
+        "cpu.syst key=6 group=0",
+        "cpu.syst key=7 group=0",
+    };
+    std::vector<double> xss_1, xss_0;
+    std::vector<aku_Timestamp> tss_all;
+    const aku_Timestamp BASE_TS = 100000, STEP_TS = 1000;
+    const double BASE_X0 = 1.0E7, STEP_X0 = 10.0;
+    const double BASE_X1 = -10., STEP_X1 = -10.0;
+    for (int i = 0; i < 10000; i++) {
+        tss_all.push_back(BASE_TS + i*STEP_TS);
+        xss_0.push_back(BASE_X0 + i*STEP_X0);
+        xss_1.push_back(BASE_X1 + i*STEP_X1);
+    }
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    fill_data(session, series_names_0, tss_all, xss_0);
+    fill_data(session, series_names_1, tss_all, xss_1);
+
+    // Construct aggregate query
+    const char* query = R"==(
+            {
+                "aggregate": {
+                    "cpu.user": "min",
+                    "cpu.syst": "max",
+                    "cpu.syst": "min"
+                }
+            })==";
+
+    CursorMock cursor;
+    session->query(&cursor, query);
+    BOOST_REQUIRE(cursor.done);
+    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), series_names_0.size()*2 + series_names_1.size());
+
+    // Construct aggregate - group-by query
+    const char* query2 = R"==(
+            {
+                "aggregate": {
+                    "cpu.user": "min",
+                    "cpu.syst": "max"
+                },
+                "group-by": [ "group" ]
+            })==";
+
+    CursorMock cursor2;
+    session->query(&cursor2, query2);
+    BOOST_REQUIRE(cursor2.done);
+    BOOST_REQUIRE_EQUAL(cursor2.error, AKU_SUCCESS);
+
+    BOOST_REQUIRE_EQUAL(cursor.samples.size(), 8);
 }
 
 // Test where clause

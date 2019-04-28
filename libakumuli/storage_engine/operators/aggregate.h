@@ -119,9 +119,11 @@ class AggregateMaterializer : public ColumnMaterializer {
     std::vector<std::unique_ptr<AggregateOperator>> iters_;
     std::vector<aku_ParamId> ids_;
     size_t pos_;
-    AggregationFunction func_;
+    std::vector<AggregationFunction> func_;
 public:
-    AggregateMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, AggregationFunction func);
+    AggregateMaterializer(std::vector<aku_ParamId>&&                        ids,
+                          std::vector<std::unique_ptr<AggregateOperator>>&& it,
+                          std::vector<AggregationFunction>&&                func);
 
     /**
      * @brief read data from iterators collection

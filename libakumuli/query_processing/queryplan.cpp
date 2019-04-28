@@ -309,13 +309,13 @@ struct Chain : MaterializationStep {
  */
 struct Aggregate : MaterializationStep {
     std::vector<aku_ParamId> ids_;
-    AggregationFunction fn_;
+    std::vector<AggregationFunction> fn_;
     std::unique_ptr<ColumnMaterializer> mat_;
 
-    template<class IdVec>
-    Aggregate(IdVec&& vec, AggregationFunction fn)
+    template<class IdVec, class FuncVec>
+    Aggregate(IdVec&& vec, FuncVec&& fn)
         : ids_(std::forward<IdVec>(vec))
-        , fn_(fn)
+        , fn_(std::forward<FuncVec>(fn))
     {
     }
 
@@ -325,7 +325,7 @@ struct Aggregate : MaterializationStep {
         if (status != AKU_SUCCESS) {
             return status;
         }
-        mat_.reset(new AggregateMaterializer(std::move(ids_), std::move(iters), fn_));
+        mat_.reset(new AggregateMaterializer(std::move(ids_), std::move(iters), std::move(fn_)));
         return AKU_SUCCESS;
 
     }
@@ -347,13 +347,13 @@ struct Aggregate : MaterializationStep {
  */
 struct AggregateCombiner : MaterializationStep {
     std::vector<aku_ParamId> ids_;
-    AggregationFunction fn_;
+    std::vector<AggregationFunction> fn_;
     std::unique_ptr<ColumnMaterializer> mat_;
 
-    template<class IdVec>
-    AggregateCombiner(IdVec&& vec, AggregationFunction fn)
+    template<class IdVec, class FuncVec>
+    AggregateCombiner(IdVec&& vec, FuncVec&& fn)
         : ids_(std::forward<IdVec>(vec))
-        , fn_(fn)
+        , fn_(std::forward<FuncVec>(fn))
     {
     }
 
@@ -365,21 +365,25 @@ struct AggregateCombiner : MaterializationStep {
         }
         std::vector<std::unique_ptr<AggregateOperator>> agglist;
         std::map<aku_ParamId, std::vector<std::unique_ptr<AggregateOperator>>> groupings;
+        std::map<aku_ParamId, AggregationFunction> functions;
         for (size_t i = 0; i < ids_.size(); i++) {
             auto id = ids_.at(i);
             auto it = std::move(iters.at(i));
             groupings[id].push_back(std::move(it));
+            functions[id] = fn_.at(i);
         }
         std::vector<aku_ParamId> ids;
+        std::vector<AggregationFunction> fns;
         for (auto& kv: groupings) {
             auto& vec = kv.second;
             ids.push_back(kv.first);
             std::unique_ptr<CombineAggregateOperator> it(new CombineAggregateOperator(std::move(vec)));
             agglist.push_back(std::move(it));
+            fns.push_back(functions[kv.first]);
         }
         mat_.reset(new AggregateMaterializer(std::move(ids),
                                              std::move(agglist),
-                                             fn_));
+                                             std::move(fns)));
         return AKU_SUCCESS;
     }
 
@@ -797,8 +801,7 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> aggregate_query_plan(
 
     std::unique_ptr<IQueryPlan> result;
 
-    if (req.order_by == OrderBy::TIME || req.agg.enabled == false ||
-        req.agg.func.size() != 1 || req.agg.step != 0)
+    if (req.order_by == OrderBy::TIME || req.agg.enabled == false || req.agg.step != 0)
     {
         return std::make_tuple(AKU_EBAD_ARG, std::move(result));
     }
@@ -815,10 +818,10 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> aggregate_query_plan(
                 ids.push_back(it->second);
             }
         }
-        t2stage.reset(new AggregateCombiner(std::move(ids), req.agg.func.front()));
+        t2stage.reset(new AggregateCombiner(std::move(ids), req.agg.func));
     } else {
         auto ids = req.select.columns.at(0).ids;
-        t2stage.reset(new Aggregate(std::move(ids), req.agg.func.front()));
+        t2stage.reset(new Aggregate(std::move(ids), req.agg.func));
     }
 
     result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
