@@ -856,10 +856,10 @@ BOOST_AUTO_TEST_CASE(Test_storage_aggregate_query) {
 
         std::vector<std::pair<std::string, double>> expected = {
             // TODO: add :min and :max
-            std::make_pair("cpu.user group=0", 1000),
-            std::make_pair("cpu.user group=1", -100000),
-            std::make_pair("cpu.syst group=0", 100990),
-            std::make_pair("cpu.syst group=1", -10),
+            std::make_pair("cpu.user:min group=0", 1000),
+            std::make_pair("cpu.user:min group=1", -100000),
+            std::make_pair("cpu.syst:max group=0", 100990),
+            std::make_pair("cpu.syst:max group=1", -10),
         };
 
         int i = 0;

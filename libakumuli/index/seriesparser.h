@@ -272,6 +272,8 @@ struct GroupByTag {
     size_t prev_size_;
     //! Metric names
     std::vector<std::string> metrics_;
+    //! List of function names (for aggregate queries)
+    std::vector<std::string> funcs_;
     //! List of tags of interest
     std::vector<std::string> tags_;
     //! Local string pool. All transient series names lives here.
@@ -281,7 +283,10 @@ struct GroupByTag {
 
     //! Main c-tor
     GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
-    GroupByTag(const SeriesMatcher &matcher, const std::vector<std::string>& metrics, std::vector<std::string> const& tags);
+    GroupByTag(const SeriesMatcher &matcher,
+               const std::vector<std::string>& metrics,
+               const std::vector<std::string>& func_names,
+               std::vector<std::string> const& tags);
 
     void refresh_();
 

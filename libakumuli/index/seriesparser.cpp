@@ -620,6 +620,7 @@ GroupByTag::GroupByTag(const SeriesMatcher &matcher, std::string metric, std::ve
     , offset_{}
     , prev_size_(0)
     , metrics_({metric})
+    , funcs_()
     , tags_(tags)
     , local_matcher_(1ul)
     , snames_(StringTools::create_set(64))
@@ -627,11 +628,15 @@ GroupByTag::GroupByTag(const SeriesMatcher &matcher, std::string metric, std::ve
     refresh_();
 }
 
-GroupByTag::GroupByTag(const SeriesMatcher &matcher, const std::vector<std::string>& metrics, std::vector<std::string> const& tags)
+GroupByTag::GroupByTag(const SeriesMatcher &matcher,
+                       const std::vector<std::string>& metrics,
+                       const std::vector<std::string> &func_names,
+                       std::vector<std::string> const& tags)
     : matcher_(matcher)
     , offset_{}
     , prev_size_(0)
     , metrics_(metrics)
+    , funcs_(func_names)
     , tags_(tags)
     , local_matcher_(1ul)
     , snames_(StringTools::create_set(64))
@@ -644,6 +649,7 @@ std::unordered_map<aku_ParamId, aku_ParamId> GroupByTag::get_mapping() const {
 }
 
 void GroupByTag::refresh_() {
+    int mindex = 0;
     for (auto metric: metrics_) {
         IncludeIfHasTag tag_query(metric, tags_);
         auto results = matcher_.search(tag_query);
@@ -658,6 +664,17 @@ void GroupByTag::refresh_() {
             stritem = std::make_pair(std::get<0>(item), std::get<1>(item));
             std::tie(status, result) = SeriesParser::filter_tags(stritem, filter, buffer);
             if (status == AKU_SUCCESS) {
+                if (funcs_.size() != 0) {
+                    // Update metric name using aggregate function, e.g. cpu key=val -> cpu:max key=val
+                    const auto& fname = funcs_.at(mindex);
+                    std::string name(result.first, result.first + result.second);
+                    auto pos = name.find_first_of(' ');
+                    if (pos != std::string::npos) {
+                        std::string str = name.substr(0, pos) + ":" + fname + name.substr(pos);
+                        std::copy(str.begin(), str.end(), buffer);
+                        result = std::make_pair(buffer, static_cast<u32>(str.size()));
+                    }
+                }
                 if (snames_.count(result) == 0) {
                     // put result to local stringpool and ids list
                     auto localid = local_matcher_.add(result.first, result.first + result.second);
@@ -674,6 +691,7 @@ void GroupByTag::refresh_() {
                 }
             }
         }
+        mindex++;
     }
 }
 

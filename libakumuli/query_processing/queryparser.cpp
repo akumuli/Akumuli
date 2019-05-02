@@ -1292,7 +1292,7 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
     }
     auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
-        groupbytag.reset(new GroupByTag(matcher, metrics, tags));
+        groupbytag.reset(new GroupByTag(matcher, metrics, aggfun, tags));
     }
 
     // Order-by statment is disallowed
