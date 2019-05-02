@@ -236,6 +236,7 @@ void fill_data(std::shared_ptr<StorageSession> session,
                std::vector<aku_Timestamp> const& tss,
                std::vector<double> const& xss)
 {
+    assert(tss.size() == xss.size());
     for (u32 ix = 0; ix < tss.size(); ix++) {
         auto ts = tss.at(ix);
         auto xs = xss.at(ix);
@@ -244,6 +245,9 @@ void fill_data(std::shared_ptr<StorageSession> session,
             sample.payload.type = AKU_PAYLOAD_FLOAT;
             sample.timestamp = ts;
             sample.payload.float64 = xs;
+            if (xs > 0 && xs < 1.0E-200) {
+                std::cout << "bug" << std::endl;
+            }
             auto status = session->init_series_id(it.data(), it.data() + it.size(), &sample);
             if (status != AKU_SUCCESS) {
                 BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
@@ -773,7 +777,7 @@ BOOST_AUTO_TEST_CASE(Test_storage_aggregate_query) {
     std::vector<double> xss_1, xss_0;
     std::vector<aku_Timestamp> tss_all;
     const aku_Timestamp BASE_TS = 100000, STEP_TS = 1000;
-    const double BASE_X0 = 1.0E7, STEP_X0 = 10.0;
+    const double BASE_X0 = 1.0E3, STEP_X0 = 10.0;
     const double BASE_X1 = -10., STEP_X1 = -10.0;
     for (int i = 0; i < 10000; i++) {
         tss_all.push_back(BASE_TS + i*STEP_TS);
@@ -785,39 +789,89 @@ BOOST_AUTO_TEST_CASE(Test_storage_aggregate_query) {
     fill_data(session, series_names_0, tss_all, xss_0);
     fill_data(session, series_names_1, tss_all, xss_1);
 
-    // Construct aggregate query
-    const char* query = R"==(
-            {
-                "aggregate": {
-                    "cpu.user": "min",
-                    "cpu.syst": "max",
-                    "cpu.syst": "min"
-                }
-            })==";
+    {
+        // Construct aggregate query
+        const char* query = R"==(
+                {
+                    "aggregate": {
+                        "cpu.user": "min",
+                        "cpu.syst": "max"
+                    }
+                })==";
 
-    CursorMock cursor;
-    session->query(&cursor, query);
-    BOOST_REQUIRE(cursor.done);
-    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
 
-    BOOST_REQUIRE_EQUAL(cursor.samples.size(), series_names_0.size()*2 + series_names_1.size());
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), series_names_0.size() + series_names_1.size());
 
-    // Construct aggregate - group-by query
-    const char* query2 = R"==(
-            {
-                "aggregate": {
-                    "cpu.user": "min",
-                    "cpu.syst": "max"
-                },
-                "group-by": [ "group" ]
-            })==";
+        std::vector<std::pair<std::string, double>> expected = {
+            std::make_pair("cpu.user:min group=0 key=4", 1000),
+            std::make_pair("cpu.user:min group=0 key=5", 1000),
+            std::make_pair("cpu.user:min group=0 key=6", 1000),
+            std::make_pair("cpu.user:min group=0 key=7", 1000),
+            std::make_pair("cpu.user:min group=1 key=0", -100000),
+            std::make_pair("cpu.user:min group=1 key=1", -100000),
+            std::make_pair("cpu.user:min group=1 key=2", -100000),
+            std::make_pair("cpu.user:min group=1 key=3", -100000),
+            std::make_pair("cpu.syst:max group=0 key=4", 100990),
+            std::make_pair("cpu.syst:max group=0 key=5", 100990),
+            std::make_pair("cpu.syst:max group=0 key=6", 100990),
+            std::make_pair("cpu.syst:max group=0 key=7", 100990),
+            std::make_pair("cpu.syst:max group=1 key=0", -10),
+            std::make_pair("cpu.syst:max group=1 key=1", -10),
+            std::make_pair("cpu.syst:max group=1 key=2", -10),
+            std::make_pair("cpu.syst:max group=1 key=3", -10),
+        };
 
-    CursorMock cursor2;
-    session->query(&cursor2, query2);
-    BOOST_REQUIRE(cursor2.done);
-    BOOST_REQUIRE_EQUAL(cursor2.error, AKU_SUCCESS);
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            BOOST_REQUIRE_EQUAL(expected.at(i).first, sname);
+            BOOST_REQUIRE_EQUAL(expected.at(i).second, sample.payload.float64);
+            i++;
+        }
+    }
 
-    BOOST_REQUIRE_EQUAL(cursor.samples.size(), 8);
+    {
+        // Construct aggregate - group-by query
+        const char* query = R"==(
+                {
+                    "aggregate": {
+                        "cpu.user": "min",
+                        "cpu.syst": "max"
+                    },
+                    "group-by": [ "group" ]
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), 4);
+
+        std::vector<std::pair<std::string, double>> expected = {
+            // TODO: add :min and :max
+            std::make_pair("cpu.user group=0", 1000),
+            std::make_pair("cpu.user group=1", -100000),
+            std::make_pair("cpu.syst group=0", 100990),
+            std::make_pair("cpu.syst group=1", -10),
+        };
+
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            BOOST_REQUIRE_EQUAL(expected.at(i).first, sname);
+            BOOST_REQUIRE_EQUAL(expected.at(i).second, sample.payload.float64);
+            i++;
+        }
+    }
 }
 
 // Test where clause

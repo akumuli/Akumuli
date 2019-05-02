@@ -1224,8 +1224,37 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
 }
 
+/** Initialize 'req.select.matcher' object with modified matcher that overrides series names
+ * using the function name. E.g. cpu.system host=abc -> cpu.system:max host=abc.
+ */
+static std::tuple<aku_Status, ErrorMsg>
+    init_matcher_in_aggregate(
+            ReshapeRequest*                         req,
+            SeriesMatcher const&                    global_matcher)
+{
+    const auto& ids = req->select.columns.at(0).ids;
+    auto matcher = std::make_shared<PlainSeriesMatcher>();
+    for (u32 ix = 0; ix < ids.size(); ix++) {
+        auto id = ids.at(ix);
+        auto fn = req->agg.func.at(ix);
+        auto sname = global_matcher.id2str(id);
+        std::string name(sname.first, sname.first + sname.second);
+        auto mpos = name.find_first_of(" ");
+        if (mpos == std::string::npos) {
+            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid series name.");
+            return std::make_tuple(AKU_EBAD_DATA, "Invalid series name `" + name + "`");
+        }
+        std::string str = name.substr(0, mpos) + ":" + Aggregation::to_string(fn) + name.substr(mpos);
+        matcher->_add(str, id);
+    }
+    req->select.matcher = matcher;
+    return std::make_tuple(AKU_SUCCESS, ErrorMsg());
+}
 
-std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher) {
+std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_query(
+        boost::property_tree::ptree const& ptree,
+        SeriesMatcher const& matcher)
+{
     ReshapeRequest result = {};
 
     ErrorMsg error;
@@ -1288,6 +1317,17 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
         std::copy(subids.begin(), subids.end(), std::back_inserter(ids));
         std::copy(subfun.begin(), subfun.end(), std::back_inserter(id2func));
     }
+    {
+        std::vector<aku_ParamId> sids;
+        std::copy(ids.begin(), ids.end(), std::back_inserter(sids));
+        std::sort(sids.begin(), sids.end());
+        if (std::unique(sids.begin(), sids.end()) != sids.end()){
+            Logger::msg(AKU_LOG_INFO, "Duplicate metric name found in `aggregate` query");
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
+                                   result,
+                                   "Duplicate metric name found in `aggregate` query");
+        }
+    }
 
     // Read timestamps
     aku_Timestamp ts_begin, ts_end;
@@ -1305,6 +1345,11 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
     result.select.columns.push_back(Column{ids});
 
     result.order_by = OrderBy::SERIES;
+
+    std::tie(status, error) = init_matcher_in_aggregate(&result, matcher);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
 
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {

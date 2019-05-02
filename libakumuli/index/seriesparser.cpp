@@ -615,7 +615,7 @@ bool LegacyGroupByTag::apply(aku_Sample* sample) {
 //              //
 
 
-GroupByTag::GroupByTag(const SeriesMatcher& matcher, std::string metric, std::vector<std::string> const& tags)
+GroupByTag::GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags)
     : matcher_(matcher)
     , offset_{}
     , prev_size_(0)
@@ -627,7 +627,7 @@ GroupByTag::GroupByTag(const SeriesMatcher& matcher, std::string metric, std::ve
     refresh_();
 }
 
-GroupByTag::GroupByTag(const SeriesMatcher& matcher, const std::vector<std::string>& metrics, std::vector<std::string> const& tags)
+GroupByTag::GroupByTag(const SeriesMatcher &matcher, const std::vector<std::string>& metrics, std::vector<std::string> const& tags)
     : matcher_(matcher)
     , offset_{}
     , prev_size_(0)
