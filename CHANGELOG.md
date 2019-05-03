@@ -1,6 +1,19 @@
 Release notes
 =============
 
+Version 0.8.64
+--------------
+
+IMPROVEMENT
+
+* Aggregate query can fetch several metrics at time
+* Group-aggregate query can fetch several metrics at time
+* Aggregate query output contains name of the function
+
+BUG FIX
+
+* Fix #296 time-duration overflow in query parser
+
 Version 0.8.63
 --------------
 
