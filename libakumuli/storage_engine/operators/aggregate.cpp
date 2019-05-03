@@ -202,11 +202,11 @@ CombineGroupAggregateOperator::Direction CombineGroupAggregateOperator::get_dire
 }
 
 
-AggregateMaterializer::AggregateMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, AggregationFunction func)
+AggregateMaterializer::AggregateMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<AggregateOperator>>&& it, std::vector<AggregationFunction> &&func)
     : iters_(std::move(it))
     , ids_(std::move(ids))
     , pos_(0)
-    , func_(func)
+    , func_(std::move(func))
 {
 }
 
@@ -232,7 +232,8 @@ std::tuple<aku_Status, size_t> AggregateMaterializer::read(u8* dest, size_t size
         sample.paramid = ids_.at(pos_);
         sample.payload.type = AKU_PAYLOAD_FLOAT;
         sample.payload.size = sizeof(aku_Sample);
-        switch (func_) {
+        auto fun = func_.at(pos_);
+        switch (fun) {
         case AggregationFunction::MIN:
             sample.timestamp = destval.mints;
             sample.payload.float64 = destval.min;

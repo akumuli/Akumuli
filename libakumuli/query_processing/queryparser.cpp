@@ -324,34 +324,40 @@ static std::tuple<aku_Status, std::vector<std::string>, ErrorMsg>
 /** Parse `aggregate` statement, format:
   * { "aggregate": { "metric": "func" }, ... }
   */
-static std::tuple<aku_Status, std::string, std::string, ErrorMsg> parse_aggregate_stmt(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, std::vector<std::string>, std::vector<std::string>, ErrorMsg> parse_aggregate_stmt(boost::property_tree::ptree const& ptree) {
+    const static std::vector<std::string> EMPTY;
     auto aggregate = ptree.get_child_optional("aggregate");
     if (aggregate) {
+        std::vector<std::string> metrics, functions;
         // select query
         for (auto kv: *aggregate) {
             auto metric_name = kv.first;
             auto func = kv.second.get_value<std::string>("count");
-            // Note: only one key-value is parsed at this time, this can be extended to tuples in the future
-            return std::make_tuple(AKU_SUCCESS, metric_name, func, ErrorMsg());
+            metrics.push_back(metric_name);
+            functions.push_back(func);
         }
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "", "Query object has empty `aggregate` field");
+        if (metrics.empty()) {
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, EMPTY, EMPTY, "Query object has empty `aggregate` field");
+        }
+        return std::make_tuple(AKU_SUCCESS, metrics, functions, ErrorMsg());
     } else {
-        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "", "Query object doesn't have `aggregate` field");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, EMPTY, EMPTY, "Query object doesn't have `aggregate` field");
     }
-    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "", "Can't parse `aggregate` field");
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, EMPTY, EMPTY, "Can't parse `aggregate` field");
 }
 
 /**
  * Result of the group-aggregate stmt parsing
  */
 struct GroupAggregate {
-    std::string metric;
+    std::vector<std::string> metric;
     std::vector<AggregationFunction> func;
     aku_Duration step;
 };
 
 /** Parse `group-aggregate` statement, format:
   * { "group-aggregate": { "step": "30s", "metric": "name", "func": ["cnt", "avg"] }, ... }
+  * { "group-aggregate": { "step": "30s", "metric": ["foo", "bar"], "func": ["cnt", "avg"] }, ... }
   * @return status, metric name, functions array, step (as timestamp)
   */
 static std::tuple<aku_Status, GroupAggregate, ErrorMsg> parse_group_aggregate_stmt(boost::property_tree::ptree const& ptree) {
@@ -401,7 +407,15 @@ static std::tuple<aku_Status, GroupAggregate, ErrorMsg> parse_group_aggregate_st
                     error_fmt << "duplicate `metric` tag in `group-aggregate` statement";
                     break;
                 } else {
-                    result.metric = value.get();
+                    for (auto child: aggregate->get_child("metric")) {
+                        auto metric = child.second.get_value_optional<std::string>();
+                        if (metric) {
+                            result.metric.push_back(*metric);
+                        }
+                    }
+                    if (result.metric.empty()) {
+                        result.metric.push_back(value.get());
+                    }
                     components[1] = true;
                 }
             } else if (tag_name == "func") {
@@ -428,6 +442,19 @@ static std::tuple<aku_Status, GroupAggregate, ErrorMsg> parse_group_aggregate_st
                                 error = true;
                                 break;
                             }
+                        }
+                    }
+                    if (result.func.empty() && !error && value) {
+                        aku_Status status;
+                        AggregationFunction func;
+                        std::tie(status, func) = Aggregation::from_string(value.get());
+                        if (status == AKU_SUCCESS) {
+                            result.func.push_back(func);
+                            n++;
+                        } else {
+                            Logger::msg(AKU_LOG_ERROR, "Aggregation function can't be found in the query");
+                            error_fmt << "aggregation function can't be found in the query";
+                            error = true;
                         }
                     }
                     if (error) {
@@ -1219,8 +1246,37 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
 }
 
+/** Initialize 'req.select.matcher' object with modified matcher that overrides series names
+ * using the function name. E.g. cpu.system host=abc -> cpu.system:max host=abc.
+ */
+static std::tuple<aku_Status, ErrorMsg>
+    init_matcher_in_aggregate(
+            ReshapeRequest*                         req,
+            SeriesMatcher const&                    global_matcher)
+{
+    const auto& ids = req->select.columns.at(0).ids;
+    auto matcher = std::make_shared<PlainSeriesMatcher>();
+    for (u32 ix = 0; ix < ids.size(); ix++) {
+        auto id = ids.at(ix);
+        auto fn = req->agg.func.at(ix);
+        auto sname = global_matcher.id2str(id);
+        std::string name(sname.first, sname.first + sname.second);
+        auto mpos = name.find_first_of(" ");
+        if (mpos == std::string::npos) {
+            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid series name.");
+            return std::make_tuple(AKU_EBAD_DATA, "Invalid series name `" + name + "`");
+        }
+        std::string str = name.substr(0, mpos) + ":" + Aggregation::to_string(fn) + name.substr(mpos);
+        matcher->_add(str, id);
+    }
+    req->select.matcher = matcher;
+    return std::make_tuple(AKU_SUCCESS, ErrorMsg());
+}
 
-std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher) {
+std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_query(
+        boost::property_tree::ptree const& ptree,
+        SeriesMatcher const& matcher)
+{
     ReshapeRequest result = {};
 
     ErrorMsg error;
@@ -1234,16 +1290,20 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
     Logger::msg(AKU_LOG_INFO, to_json(ptree, true).c_str());
 
     // Metric name
-    std::string metric;
-    std::string aggfun;
-    std::tie(status, metric, aggfun, error) = parse_aggregate_stmt(ptree);
+    std::vector<std::string> metrics;
+    std::vector<std::string> aggfun;
+    std::tie(status, metrics, aggfun, error) = parse_aggregate_stmt(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
-    AggregationFunction func;
-    std::tie(status, func) = Aggregation::from_string(aggfun);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result, "Unknown aggregate function `" + aggfun + "`");
+    std::vector<AggregationFunction> func;
+    for (auto af: aggfun) {
+        AggregationFunction f;
+        std::tie(status, f) = Aggregation::from_string(af);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, result, "Unknown aggregate function `" + af + "`");
+        }
+        func.push_back(f);
     }
 
     // Group-by statement
@@ -1254,7 +1314,7 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
     }
     auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
-        groupbytag.reset(new GroupByTag(matcher, metric, tags));
+        groupbytag.reset(new GroupByTag(matcher, metrics, aggfun, tags));
     }
 
     // Order-by statment is disallowed
@@ -1268,27 +1328,50 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
 
     // Where statement
     std::vector<aku_ParamId> ids;
-    std::tie(status, ids, error) = parse_where_clause(ptree, {metric}, matcher);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result, error);
+    std::vector<AggregationFunction> id2func;
+    for (u32 ix = 0; ix < metrics.size(); ix++) {
+        std::vector<aku_ParamId> subids;
+        std::tie(status, subids, error) = parse_where_clause(ptree, {metrics.at(ix)}, matcher);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, result, error);
+        }
+        std::vector<AggregationFunction> subfun(subids.size(), func.at(ix));
+        std::copy(subids.begin(), subids.end(), std::back_inserter(ids));
+        std::copy(subfun.begin(), subfun.end(), std::back_inserter(id2func));
+    }
+    {
+        std::vector<aku_ParamId> sids;
+        std::copy(ids.begin(), ids.end(), std::back_inserter(sids));
+        std::sort(sids.begin(), sids.end());
+        if (std::unique(sids.begin(), sids.end()) != sids.end()){
+            Logger::msg(AKU_LOG_INFO, "Duplicate metric name found in `aggregate` query");
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
+                                   result,
+                                   "Duplicate metric name found in `aggregate` query");
+        }
     }
 
     // Read timestamps
     aku_Timestamp ts_begin, ts_end;
-    std::tie(status, ts_begin, ts_end, error) = parse_range_timestamp(ptree);
+    std::tie(status, ts_begin, ts_end, error) = parse_range_timestamp(ptree, true);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
 
     // Initialize request
     result.agg.enabled = true;
-    result.agg.func = { func };
+    result.agg.func = id2func;
 
     result.select.begin = ts_begin;
     result.select.end = ts_end;
     result.select.columns.push_back(Column{ids});
 
     result.order_by = OrderBy::SERIES;
+
+    std::tie(status, error) = init_matcher_in_aggregate(&result, matcher);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
 
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
@@ -1303,7 +1386,6 @@ static std::tuple<aku_Status, ErrorMsg>
     init_matcher_in_group_aggregate(
             ReshapeRequest*                         req,
             SeriesMatcher const&                    global_matcher,
-            std::string                             metric_name,
             std::vector<AggregationFunction> const& func_names)
 {
     std::vector<aku_ParamId> ids = req->select.columns.at(0).ids;
@@ -1311,11 +1393,13 @@ static std::tuple<aku_Status, ErrorMsg>
     for (auto id: ids) {
         auto sname = global_matcher.id2str(id);
         std::string name(sname.first, sname.first + sname.second);
-        if (!boost::algorithm::starts_with(name, metric_name)) {
-            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid metric name.");
-            return std::make_tuple(AKU_EBAD_DATA, "Invalid metric name `" + metric_name + "`");
+        auto npos = name.find_first_of(' ');
+        if (npos == std::string::npos) {
+            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid series name.");
+            return std::make_tuple(AKU_EBAD_DATA, "Invalid series name `" + name + "`");
         }
-        auto tags = name.substr(metric_name.size());
+        std::string metric_name = name.substr(0, npos);
+        auto tags = name.substr(npos);
         std::stringstream str;
         bool first = true;
         for (auto func: func_names) {
@@ -1371,12 +1455,13 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
     }
     auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
-        groupbytag.reset(new GroupByTag(matcher, gagg.metric, tags));
+        std::vector<std::string> fnames;
+        groupbytag.reset(new GroupByTag(matcher, gagg.metric, fnames, tags));
     }
 
     // Where statement
     std::vector<aku_ParamId> ids;
-    std::tie(status, ids, error) = parse_where_clause(ptree, {gagg.metric}, matcher);
+    std::tie(status, ids, error) = parse_where_clause(ptree, gagg.metric, matcher);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
@@ -1420,7 +1505,7 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
         return std::make_tuple(status, result, error);
     }
 
-    std::tie(status, error) = init_matcher_in_group_aggregate(&result, matcher, gagg.metric, gagg.func);
+    std::tie(status, error) = init_matcher_in_group_aggregate(&result, matcher, gagg.func);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
