@@ -48,7 +48,7 @@ template<class Op>
 bool MathOperation<Op>::put(MutableSample &mut) {
     Op operation;
     auto size = mut.size();
-    double acc = 0.;
+    double acc = operation.unit();
     for (u32 ix = 0; ix < size; ix++) {
         double* value = mut[ix];
         double x;

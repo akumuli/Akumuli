@@ -479,7 +479,8 @@ void test_aggregation(aku_Timestamp begin, aku_Timestamp end) {
     QueryProcessorMock mock;
     ReshapeRequest req = {};
     req.agg.enabled = true;
-    req.agg.func = { AggregationFunction::SUM };
+    std::vector<AggregationFunction> func(ids.size(), AggregationFunction::SUM);
+    std::swap(req.agg.func, func);
     req.group_by.enabled = false;
     req.order_by = OrderBy::SERIES;
     req.select.begin = begin;
@@ -537,7 +538,8 @@ void test_aggregation_group_by(aku_Timestamp begin, aku_Timestamp end) {
     QueryProcessorMock mock;
     ReshapeRequest req = {};
     req.agg.enabled = true;
-    req.agg.func = { AggregationFunction::SUM };
+    std::vector<AggregationFunction> func(ids.size(), AggregationFunction::SUM);
+    std::swap(req.agg.func, func);
     req.group_by.enabled = true;
     req.select.matcher = matcher;
     req.group_by.transient_map = translation_table;
@@ -717,7 +719,8 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         ReshapeRequest req = {};
         req.agg.enabled = true;
         req.agg.step = step;
-        req.agg.func = { AggregationFunction::MIN };
+        std::vector<AggregationFunction> func(col.size(), AggregationFunction::MIN);
+        std::swap(req.agg.func, func);
         req.group_by.enabled = false;
         req.order_by = OrderBy::SERIES;
         req.select.begin = begin;
@@ -750,7 +753,8 @@ void test_group_aggregate(aku_Timestamp begin, aku_Timestamp end) {
         ReshapeRequest req = {};
         req.agg.enabled = true;
         req.agg.step = step;
-        req.agg.func = { AggregationFunction::MIN };
+        std::vector<AggregationFunction> func(col.size(), AggregationFunction::MIN);
+        std::swap(req.agg.func, func);
         req.group_by.enabled = false;
         req.order_by = OrderBy::TIME;
         req.select.begin = begin;
@@ -806,7 +810,8 @@ void test_aggregate_and_group_by(aku_Timestamp begin, aku_Timestamp end) {
     QueryProcessorMock mock;
     ReshapeRequest req = {};
     req.agg.enabled = true;
-    req.agg.func = { AggregationFunction::SUM };
+    std::vector<AggregationFunction> func(ids.size(), AggregationFunction::SUM);
+    std::swap(req.agg.func, func);
     req.group_by.enabled = false;
     req.order_by = OrderBy::SERIES;
     req.select.begin = begin;
@@ -1066,7 +1071,7 @@ void test_group_aggregate_filter(aku_Timestamp begin, aku_Timestamp end) {
         ReshapeRequest req = {};
         req.agg.enabled = true;
         req.agg.step = step;
-        req.agg.func = { AggregationFunction::MEAN };
+        req.agg.func = {AggregationFunction::MEAN};
         req.group_by.enabled = false;
         req.order_by = OrderBy::SERIES;
         req.select.begin = begin;
@@ -1110,7 +1115,7 @@ void test_group_aggregate_filter(aku_Timestamp begin, aku_Timestamp end) {
         ReshapeRequest req = {};
         req.agg.enabled = true;
         req.agg.step = step;
-        req.agg.func = { AggregationFunction::MEAN };
+        req.agg.func = {AggregationFunction::MEAN};
         req.group_by.enabled = false;
         req.order_by = OrderBy::TIME;
         req.select.begin = begin;

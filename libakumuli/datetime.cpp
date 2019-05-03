@@ -181,34 +181,34 @@ aku_Duration DateTimeUtil::parse_duration(const char* str, size_t size) {
     auto num = m[1];
     auto unit = m[2].first;
     auto unitlen = m[2].second - m[2].first;
-    auto K = 0ul;
+    auto K = 0ull;
     if (unitlen > 0) {
         switch(unit[0]) {
         case 'n':  // nanosecond
-            K = 1ul;
+            K = 1ull;
             break;
         case 'u':  // microsecond
-            K = 1000ul;
+            K = 1000ull;
             break;
         case 's':  // second
-            K = 1000000000ul;
+            K = 1000000000ull;
             break;
         case 'm':
             switch(unitlen) {
             case 1:
             case 3:  // minute
-                K = 60*1000000000ul;
+                K = 60*1000000000ull;
                 break;
             case 2:  // milisecond
-                K = 1000000ul;
+                K = 1000000ull;
                 break;
             }
             break;
         case 'h':  // hour
-            K = 60*60*1000000000ul;
+            K = 60*60*1000000000ull;
             break;
         case 'd':  // day
-            K = 24*60*60*1000000000ul;
+            K = 24*60*60*1000000000ull;
             break;
         }
         if (K == 0ul) {
@@ -216,7 +216,7 @@ aku_Duration DateTimeUtil::parse_duration(const char* str, size_t size) {
             BOOST_THROW_EXCEPTION(err);
         }
     } else {
-        K = 1ul;
+        K = 1ull;
     }
     return K*atoll(num.first);
 }

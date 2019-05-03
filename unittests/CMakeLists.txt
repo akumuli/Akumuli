@@ -211,6 +211,7 @@ add_executable(
     #../libakumuli/hashfnfamily.cpp
     #../libakumuli/query_processing/anomaly.cpp
     ../libakumuli/query_processing/sax.cpp
+    ../libakumuli/query_processing/math.cpp
     ../libakumuli/query_processing/rate.cpp
     ../libakumuli/query_processing/sliding_window.cpp
     #../libakumuli/query_processing/filterbyid.cpp

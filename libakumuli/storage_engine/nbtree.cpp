@@ -220,7 +220,7 @@ aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, SubtreeRef& b
     backref.sum = 0;
 
     double min = std::numeric_limits<double>::max();
-    double max = std::numeric_limits<double>::min();
+    double max = std::numeric_limits<double>::lowest();
     aku_Timestamp mints = 0;
     aku_Timestamp maxts = 0;
     for (const SubtreeRef& sref: refs) {
@@ -1606,10 +1606,10 @@ NBTreeLeaf::NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     subtree->end = 0;
     subtree->count = 0;
     subtree->min = std::numeric_limits<double>::max();
-    subtree->max = std::numeric_limits<double>::min();
+    subtree->max = std::numeric_limits<double>::lowest();
     subtree->sum = 0;
     subtree->min_time = std::numeric_limits<aku_Timestamp>::max();
-    subtree->max_time = std::numeric_limits<aku_Timestamp>::min();
+    subtree->max_time = std::numeric_limits<aku_Timestamp>::lowest();
     subtree->first = .0;
     subtree->last = .0;
 }
@@ -1970,10 +1970,10 @@ IOVecLeaf::IOVecLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     subtree->end = 0;
     subtree->count = 0;
     subtree->min = std::numeric_limits<double>::max();
-    subtree->max = std::numeric_limits<double>::min();
+    subtree->max = std::numeric_limits<double>::lowest();
     subtree->sum = 0;
     subtree->min_time = std::numeric_limits<aku_Timestamp>::max();
-    subtree->max_time = std::numeric_limits<aku_Timestamp>::min();
+    subtree->max_time = std::numeric_limits<aku_Timestamp>::lowest();
     subtree->first = .0;
     subtree->last = .0;
 

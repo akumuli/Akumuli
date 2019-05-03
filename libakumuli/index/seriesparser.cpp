@@ -615,11 +615,28 @@ bool LegacyGroupByTag::apply(aku_Sample* sample) {
 //              //
 
 
-GroupByTag::GroupByTag(const SeriesMatcher& matcher, std::string metric, std::vector<std::string> const& tags)
+GroupByTag::GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags)
     : matcher_(matcher)
     , offset_{}
     , prev_size_(0)
-    , metric_(metric)
+    , metrics_({metric})
+    , funcs_()
+    , tags_(tags)
+    , local_matcher_(1ul)
+    , snames_(StringTools::create_set(64))
+{
+    refresh_();
+}
+
+GroupByTag::GroupByTag(const SeriesMatcher &matcher,
+                       const std::vector<std::string>& metrics,
+                       const std::vector<std::string> &func_names,
+                       std::vector<std::string> const& tags)
+    : matcher_(matcher)
+    , offset_{}
+    , prev_size_(0)
+    , metrics_(metrics)
+    , funcs_(func_names)
     , tags_(tags)
     , local_matcher_(1ul)
     , snames_(StringTools::create_set(64))
@@ -632,34 +649,49 @@ std::unordered_map<aku_ParamId, aku_ParamId> GroupByTag::get_mapping() const {
 }
 
 void GroupByTag::refresh_() {
-    IncludeIfHasTag tag_query(metric_, tags_);
-    auto results = matcher_.search(tag_query);
-    auto filter = StringTools::create_set(tags_.size());
-    for (const auto& tag: tags_) {
-        filter.insert(std::make_pair(tag.data(), tag.size()));
-    }
-    char buffer[AKU_LIMITS_MAX_SNAME];
-    for (auto item: results) {
-        aku_Status status;
-        SeriesParser::StringT result, stritem;
-        stritem = std::make_pair(std::get<0>(item), std::get<1>(item));
-        std::tie(status, result) = SeriesParser::filter_tags(stritem, filter, buffer);
-        if (status == AKU_SUCCESS) {
-            if (snames_.count(result) == 0) {
-                // put result to local stringpool and ids list
-                auto localid = local_matcher_.add(result.first, result.first + result.second);
-                auto str = local_matcher_.id2str(localid);
-                snames_.insert(str);
-                ids_[std::get<2>(item)] = localid;
-            } else {
-                // local name already created
-                auto localid = local_matcher_.match(result.first, result.first + result.second);
-                if (localid == 0ul) {
-                    AKU_PANIC("inconsistent matcher state");
+    int mindex = 0;
+    for (auto metric: metrics_) {
+        IncludeIfHasTag tag_query(metric, tags_);
+        auto results = matcher_.search(tag_query);
+        auto filter = StringTools::create_set(tags_.size());
+        for (const auto& tag: tags_) {
+            filter.insert(std::make_pair(tag.data(), tag.size()));
+        }
+        char buffer[AKU_LIMITS_MAX_SNAME];
+        for (auto item: results) {
+            aku_Status status;
+            SeriesParser::StringT result, stritem;
+            stritem = std::make_pair(std::get<0>(item), std::get<1>(item));
+            std::tie(status, result) = SeriesParser::filter_tags(stritem, filter, buffer);
+            if (status == AKU_SUCCESS) {
+                if (funcs_.size() != 0) {
+                    // Update metric name using aggregate function, e.g. cpu key=val -> cpu:max key=val
+                    const auto& fname = funcs_.at(mindex);
+                    std::string name(result.first, result.first + result.second);
+                    auto pos = name.find_first_of(' ');
+                    if (pos != std::string::npos) {
+                        std::string str = name.substr(0, pos) + ":" + fname + name.substr(pos);
+                        std::copy(str.begin(), str.end(), buffer);
+                        result = std::make_pair(buffer, static_cast<u32>(str.size()));
+                    }
                 }
-                ids_[std::get<2>(item)] = localid;
+                if (snames_.count(result) == 0) {
+                    // put result to local stringpool and ids list
+                    auto localid = local_matcher_.add(result.first, result.first + result.second);
+                    auto str = local_matcher_.id2str(localid);
+                    snames_.insert(str);
+                    ids_[std::get<2>(item)] = localid;
+                } else {
+                    // local name already created
+                    auto localid = local_matcher_.match(result.first, result.first + result.second);
+                    if (localid == 0ul) {
+                        AKU_PANIC("inconsistent matcher state");
+                    }
+                    ids_[std::get<2>(item)] = localid;
+                }
             }
         }
+        mindex++;
     }
 }
 
