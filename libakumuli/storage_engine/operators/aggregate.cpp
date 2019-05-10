@@ -60,6 +60,61 @@ AggregateOperator::Direction CombineAggregateOperator::get_direction() {
     return dir_;
 }
 
+// Fan-in aggregate operator //
+
+void FanInAggregateOperator::add(std::unique_ptr<AggregateOperator>&& it) {
+    iter_.push_back(std::move(it));
+}
+
+std::tuple<aku_Status, size_t> FanInAggregateOperator::read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
+    if (size == 0) {
+        return std::make_tuple(AKU_EBAD_ARG, 0);
+    }
+    if (iter_index_ == iter_.size()) {
+        return std::make_tuple(AKU_ENO_DATA, 0);
+    }
+    const size_t SZBUF = iter_.size();
+    aku_Status status = AKU_ENO_DATA;
+    aku_Timestamp tsresult = 0;
+    std::vector<AggregationResult> outval(SZBUF, INIT_AGGRES);
+    std::vector<aku_Timestamp> outts(SZBUF, 0);
+    ssize_t ressz;
+    size_t ixout = 0;
+    while (ixout < size) {
+        int ix = 0;
+        u32 nz = 0;
+        for (auto& it: iter_) {
+            std::tie(status, ressz) = it->read(&outts[ix], &outval[ix], 1);
+            if (ressz == 0) {
+                outval[ix] = INIT_AGGRES;
+                nz++;
+            }
+            if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+                return std::make_pair(status, 0);
+            }
+            if (nz == outval.size()) {
+                return std::make_pair(AKU_ENO_DATA, ixout);
+            }
+            ix++;
+        }
+        AggregationResult xsresult = INIT_AGGRES;
+        xsresult = std::accumulate(outval.begin(), outval.end(), xsresult,
+                        [](AggregationResult lhs, AggregationResult rhs) {
+                            lhs.combine(rhs);
+                            return lhs;
+                        });
+        tsresult = outts.front();
+        destval[ixout] = xsresult;
+        destts [ixout] = tsresult;
+        ixout++;
+    }
+    return std::make_tuple(AKU_SUCCESS, ixout);
+}
+
+AggregateOperator::Direction FanInAggregateOperator::get_direction() {
+    return dir_;
+}
+
 
 // Group aggregate operator //
 

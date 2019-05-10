@@ -213,6 +213,7 @@ add_executable(
     ../libakumuli/query_processing/sax.cpp
     ../libakumuli/query_processing/math.cpp
     ../libakumuli/query_processing/rate.cpp
+    ../libakumuli/query_processing/scale.cpp
     ../libakumuli/query_processing/sliding_window.cpp
     #../libakumuli/query_processing/filterbyid.cpp
     ../libakumuli/query_processing/limiter.cpp

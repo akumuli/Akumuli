@@ -482,7 +482,7 @@ aku_Status SeriesParser::to_canonical_form(const char* begin, const char* end,
     return AKU_SUCCESS;
 }
 
-std::tuple<aku_Status, SeriesParser::StringT> SeriesParser::filter_tags(SeriesParser::StringT const& input, const StringTools::SetT &tags, char* out) {
+std::tuple<aku_Status, SeriesParser::StringT> SeriesParser::filter_tags(SeriesParser::StringT const& input, const StringTools::SetT &tags, char* out, bool inv) {
     StringT NO_RESULT = {};
     char* out_begin = out;
     char* it_out = out;
@@ -509,7 +509,8 @@ std::tuple<aku_Status, SeriesParser::StringT> SeriesParser::filter_tags(SeriesPa
         if (!error) {
             // Check tag
             StringT tag = get_tag_name(last_tag, it);
-            if (tags.count(tag) != 0) {
+            auto ntags = tags.count(tag);
+            if ((!inv && ntags) || (inv && !ntags)) {
                 *it_out = ' ';
                 it_out++;
                 auto sz = it - last_tag;
@@ -535,6 +536,7 @@ std::tuple<aku_Status, SeriesParser::StringT> SeriesParser::filter_tags(SeriesPa
 
     return std::make_tuple(AKU_SUCCESS, std::make_pair(out_begin, it_out - out_begin));
 }
+
 
 
 // ////////// //
@@ -614,8 +616,7 @@ bool LegacyGroupByTag::apply(aku_Sample* sample) {
 //  GroupByTag  //
 //              //
 
-
-GroupByTag::GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags)
+GroupByTag::GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags, GroupByOpType op)
     : matcher_(matcher)
     , offset_{}
     , prev_size_(0)
@@ -624,6 +625,7 @@ GroupByTag::GroupByTag(const SeriesMatcher &matcher, std::string metric, std::ve
     , tags_(tags)
     , local_matcher_(1ul)
     , snames_(StringTools::create_set(64))
+    , type_(op)
 {
     refresh_();
 }
@@ -631,7 +633,7 @@ GroupByTag::GroupByTag(const SeriesMatcher &matcher, std::string metric, std::ve
 GroupByTag::GroupByTag(const SeriesMatcher &matcher,
                        const std::vector<std::string>& metrics,
                        const std::vector<std::string> &func_names,
-                       std::vector<std::string> const& tags)
+                       std::vector<std::string> const& tags, GroupByOpType op)
     : matcher_(matcher)
     , offset_{}
     , prev_size_(0)
@@ -640,8 +642,13 @@ GroupByTag::GroupByTag(const SeriesMatcher &matcher,
     , tags_(tags)
     , local_matcher_(1ul)
     , snames_(StringTools::create_set(64))
+    , type_(op)
 {
     refresh_();
+}
+
+PlainSeriesMatcher &GroupByTag::get_series_matcher() {
+    return local_matcher_;
 }
 
 std::unordered_map<aku_ParamId, aku_ParamId> GroupByTag::get_mapping() const {
@@ -662,7 +669,7 @@ void GroupByTag::refresh_() {
             aku_Status status;
             SeriesParser::StringT result, stritem;
             stritem = std::make_pair(std::get<0>(item), std::get<1>(item));
-            std::tie(status, result) = SeriesParser::filter_tags(stritem, filter, buffer);
+            std::tie(status, result) = SeriesParser::filter_tags(stritem, filter, buffer, type_ == GroupByOpType::GROUP);
             if (status == AKU_SUCCESS) {
                 if (funcs_.size() != 0) {
                     // Update metric name using aggregate function, e.g. cpu key=val -> cpu:max key=val
@@ -694,6 +701,5 @@ void GroupByTag::refresh_() {
         mindex++;
     }
 }
-
 
 }

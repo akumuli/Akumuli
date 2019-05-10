@@ -917,7 +917,7 @@ BOOST_AUTO_TEST_CASE(Test_storage_group_aggregate_query_0) {
     auto session = storage->create_write_session();
     fill_data(session, series_names, tss, xss);
 
-    {
+    /*{
         // Construct group-aggregate query
         const char* query = R"==(
                 {
@@ -969,6 +969,44 @@ BOOST_AUTO_TEST_CASE(Test_storage_group_aggregate_query_0) {
             BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
             BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
             BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), pmin);
+            i++;
+        }
+    }*/
+
+    {
+        // Construct group-aggregate query
+        const char* query = R"==(
+                {
+                    "group-aggregate": {
+                        "metric": "cpu.user",
+                        "step"  : 4000000,
+                        "func"  : "min"
+                    },
+                    "group-by-tag": [ "key" ],
+                    "order-by": "time",
+                    "range": {
+                        "from"  : 100000,
+                        "to"    : 10100000
+                    }
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+
+        std::vector<std::tuple<std::string, aku_Timestamp, double>> expected = {
+        };
+
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            u64 bits;
+            memcpy(&bits, &sample.payload.float64, sizeof(u64));
+            double pmin = cursor.tuples[i][0];
+            std::cout << sname << ", " << sample.timestamp << ", " << pmin << std::endl;
             i++;
         }
     }

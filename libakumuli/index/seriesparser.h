@@ -220,9 +220,12 @@ struct SeriesParser {
     typedef StringTools::StringT StringT;
 
     /** Remove redundant tags from input string. Leave only metric and tags from the list.
+      * If 'inv' is set leave tags that are not in the set.
       */
     static std::tuple<aku_Status, StringT> filter_tags(StringT const& input,
-                                                       StringTools::SetT const& tags, char* out);
+                                                       StringTools::SetT const& tags,
+                                                       char* out,
+                                                       bool inv=false);
 };
 
 
@@ -257,6 +260,17 @@ struct LegacyGroupByTag {
 };
 
 
+struct TagRenamer {
+    virtual ~TagRenamer() = default;
+    virtual PlainSeriesMatcher& get_series_matcher() = 0;
+    virtual std::unordered_map<aku_ParamId, aku_ParamId> get_mapping() const = 0;
+};
+
+
+enum class GroupByOpType {
+    PIVOT,
+    GROUP,
+};
 
 /** Group-by processor. Maps set of global series names to
   * some other set of local series ids.
@@ -280,18 +294,20 @@ struct GroupByTag {
     PlainSeriesMatcher local_matcher_;
     //! List of string already added string pool
     StringTools::SetT snames_;
+    GroupByOpType type_;
 
     //! Main c-tor
-    GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags);
+    GroupByTag(const SeriesMatcher &matcher, std::string metric, std::vector<std::string> const& tags, GroupByOpType op);
     GroupByTag(const SeriesMatcher &matcher,
                const std::vector<std::string>& metrics,
                const std::vector<std::string>& func_names,
-               std::vector<std::string> const& tags);
+               std::vector<std::string> const& tags,
+               GroupByOpType op);
 
     void refresh_();
 
+    PlainSeriesMatcher& get_series_matcher();
     std::unordered_map<aku_ParamId, aku_ParamId> get_mapping() const;
 };
-
 
 }
