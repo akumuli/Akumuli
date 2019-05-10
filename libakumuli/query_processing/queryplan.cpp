@@ -396,6 +396,92 @@ struct AggregateCombiner : MaterializationStep {
     }
 };
 
+
+template<OrderBy order>
+struct GroupAggregateCombiner_Initializer;
+
+template<>
+struct GroupAggregateCombiner_Initializer<OrderBy::SERIES> {
+    static std::unique_ptr<ColumnMaterializer> make_materializer(
+                                                std::vector<aku_ParamId>&& ids,
+                                                std::vector<std::unique_ptr<AggregateOperator>>&& agglist,
+                                                const std::vector<AggregationFunction>& fn)
+    {
+        std::unique_ptr<ColumnMaterializer> mat;
+        mat.reset(new SeriesOrderAggregateMaterializer(std::move(ids), std::move(agglist), fn));
+        return mat;
+    }
+};
+
+template<>
+struct GroupAggregateCombiner_Initializer<OrderBy::TIME> {
+    static std::unique_ptr<ColumnMaterializer> make_materializer(
+                                                std::vector<aku_ParamId>&& ids,
+                                                std::vector<std::unique_ptr<AggregateOperator>>&& agglist,
+                                                const std::vector<AggregationFunction>& fn)
+    {
+        std::vector<aku_ParamId> tmpids(ids);
+        std::vector<std::unique_ptr<AggregateOperator>> tmpiters(std::move(agglist));
+        std::unique_ptr<ColumnMaterializer> mat;
+        mat.reset(new TimeOrderAggregateMaterializer(tmpids, tmpiters, fn));
+        return mat;
+    }
+};
+
+/**
+ * Combines the group-aggregate operators.
+ * Accepts list of ids (shouldn't be different) and list of aggregate
+ * operators. Maps each id to operator and then combines operators
+ * with the same id (to implement group-aggregate + group/pivot-by-tag).
+ */
+template<OrderBy order>
+struct GroupAggregateCombiner : MaterializationStep {
+    std::vector<aku_ParamId> ids_;
+    std::vector<AggregationFunction> fn_;
+    std::unique_ptr<ColumnMaterializer> mat_;
+
+    template<class IdVec, class FuncVec>
+    GroupAggregateCombiner(IdVec&& vec, FuncVec&& fn)
+        : ids_(std::forward<IdVec>(vec))
+        , fn_(std::forward<FuncVec>(fn))
+    {
+    }
+
+    aku_Status apply(ProcessingPrelude *prelude) {
+        std::vector<std::unique_ptr<AggregateOperator>> iters;
+        auto status = prelude->extract_result(&iters);
+        if (status != AKU_SUCCESS) {
+            return status;
+        }
+        std::vector<std::unique_ptr<AggregateOperator>> agglist;
+        std::map<aku_ParamId, std::vector<std::unique_ptr<AggregateOperator>>> groupings;
+        for (size_t i = 0; i < ids_.size(); i++) {
+            auto id = ids_.at(i);
+            auto it = std::move(iters.at(i));
+            groupings[id].push_back(std::move(it));
+        }
+        std::vector<aku_ParamId> ids;
+        for (auto& kv: groupings) {
+            auto& vec = kv.second;
+            ids.push_back(kv.first);
+            std::unique_ptr<FanInAggregateOperator> it(new FanInAggregateOperator(std::move(vec)));
+            agglist.push_back(std::move(it));
+        }
+        mat_ = GroupAggregateCombiner_Initializer<order>::make_materializer(std::move(ids),
+                                                                            std::move(agglist),
+                                                                            fn_);
+        return AKU_SUCCESS;
+    }
+
+    aku_Status extract_result(std::unique_ptr<ColumnMaterializer> *dest) {
+        if (!mat_) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(mat_);
+        return AKU_SUCCESS;
+    }
+};
+
 /**
  * Joins several operators into one.
  * Number of joined operators is defined by the cardinality.
@@ -913,10 +999,25 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> group_aggregate_query
     }
 
     std::unique_ptr<MaterializationStep> t2stage;
-    if (req.order_by == OrderBy::SERIES) {
-        t2stage.reset(new SeriesOrderAggregate(req.select.columns.at(0).ids, req.agg.func));
+    if (req.group_by.enabled) {
+        std::vector<aku_ParamId> ids;
+        for(auto id: req.select.columns.at(0).ids) {
+            auto it = req.group_by.transient_map.find(id);
+            if (it != req.group_by.transient_map.end()) {
+                ids.push_back(it->second);
+            }
+        }
+        if (req.order_by == OrderBy::SERIES) {
+            t2stage.reset(new GroupAggregateCombiner<OrderBy::SERIES>(std::move(ids), req.agg.func));
+        } else {
+            t2stage.reset(new GroupAggregateCombiner<OrderBy::TIME>(ids, req.agg.func));
+        }
     } else {
-        t2stage.reset(new TimeOrderAggregate(req.select.columns.at(0).ids, req.agg.func));
+        if (req.order_by == OrderBy::SERIES) {
+            t2stage.reset(new SeriesOrderAggregate(req.select.columns.at(0).ids, req.agg.func));
+        } else {
+            t2stage.reset(new TimeOrderAggregate(req.select.columns.at(0).ids, req.agg.func));
+        }
     }
 
     result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));

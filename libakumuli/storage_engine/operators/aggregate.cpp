@@ -60,6 +60,74 @@ AggregateOperator::Direction CombineAggregateOperator::get_direction() {
     return dir_;
 }
 
+// Fan-in aggregate operator //
+
+void FanInAggregateOperator::add(std::unique_ptr<AggregateOperator>&& it) {
+    iter_.push_back(std::move(it));
+}
+
+std::tuple<aku_Status, size_t> FanInAggregateOperator::read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
+    static const aku_Timestamp MAX_TS = std::numeric_limits<aku_Timestamp>::max();
+    if (size == 0) {
+        return std::make_tuple(AKU_EBAD_ARG, 0);
+    }
+    if (iter_index_ == iter_.size()) {
+        return std::make_tuple(AKU_ENO_DATA, 0);
+    }
+    const size_t SZBUF = iter_.size();
+    aku_Status status = AKU_ENO_DATA;
+    std::vector<AggregationResult> outval(SZBUF, INIT_AGGRES);
+    std::vector<aku_Timestamp> outts(SZBUF, MAX_TS);
+    ssize_t ressz;
+    size_t ixout = 0;
+    aku_Timestamp tsmin = MAX_TS;
+    while (ixout < size) {
+        int ix = 0;
+        u32 nz = 0;
+        for (auto& it: iter_) {
+            // On the first iteration all values will match. On any other iteration
+            // only the ones that needs to be updated will match.
+            if (outts[ix] == tsmin) {
+                std::tie(status, ressz) = it->read(&outts[ix], &outval[ix], 1);
+                if (ressz == 0) {
+                    outval[ix] = INIT_AGGRES;
+                    outts[ix] = MAX_TS;
+                    nz++;
+                }
+                if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+                    return std::make_pair(status, 0);
+                }
+                if (nz == outval.size()) {
+                    return std::make_pair(AKU_ENO_DATA, ixout);
+                }
+            }
+            ix++;
+        }
+        tsmin = std::accumulate(outts.begin(), outts.end(), MAX_TS,
+                                [](aku_Timestamp lhs, aku_Timestamp rhs) {
+            return std::min(lhs, rhs);
+        });
+        if (tsmin == MAX_TS) {
+            return std::make_pair(AKU_ENO_DATA, ixout);
+        }
+        AggregationResult xsresult = INIT_AGGRES;
+        for (u32 i = 0; i < iter_.size(); i++) {
+            // Invariant: at least one index matches by definition
+            if (outts[i] == tsmin) {
+                xsresult.combine(outval[i]);
+            }
+        }
+        destval[ixout] = xsresult;
+        destts [ixout] = tsmin;
+        ixout++;
+    }
+    return std::make_tuple(AKU_SUCCESS, ixout);
+}
+
+AggregateOperator::Direction FanInAggregateOperator::get_direction() {
+    return dir_;
+}
+
 
 // Group aggregate operator //
 

@@ -39,6 +39,36 @@ struct CombineAggregateOperator : AggregateOperator {
     virtual Direction get_direction();
 };
 
+/** Fan-in aggregate operator
+  * Accepts list of iterators in the c-tor. Fetches value
+  * from every iterator and produces a single output. Compared
+  * to CombineAggregateOperator it produces multiple values.
+  */
+struct FanInAggregateOperator : AggregateOperator {
+    typedef std::vector<std::unique_ptr<AggregateOperator>> IterVec;
+    IterVec             iter_;
+    Direction           dir_;
+    u32                 iter_index_;
+
+    //! C-tor. Create iterator from list of iterators.
+    template<class TVec>
+    FanInAggregateOperator(TVec&& iter)
+        : iter_(std::forward<TVec>(iter))
+        , iter_index_(0)
+    {
+        if (iter_.empty()) {
+            dir_ = Direction::FORWARD;
+        } else {
+            dir_ = iter_.front()->get_direction();
+        }
+    }
+
+    void add(std::unique_ptr<AggregateOperator>&& it);
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size);
+    virtual Direction get_direction();
+};
+
 
 /** Aggregating operator (group-by + aggregate).
   */
@@ -159,7 +189,7 @@ struct TimeOrderAggregateMaterializer : TupleOutputUtils, ColumnMaterializer {
     std::unique_ptr<Materializer> join_iter_;
 
     TimeOrderAggregateMaterializer(const std::vector<aku_ParamId>& ids,
-                      std::vector<std::unique_ptr<AggregateOperator>> &it,
+                      std::vector<std::unique_ptr<AggregateOperator>>& it,
                       const std::vector<AggregationFunction>& components)
     {
         assert(it.size());

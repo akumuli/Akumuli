@@ -509,9 +509,20 @@ static std::tuple<aku_Status, OrderBy, ErrorMsg> parse_orderby(boost::property_t
  *  or
  *  { ..., "group-by": "tag1" }
  */
-static std::tuple<aku_Status, std::vector<std::string>, ErrorMsg> parse_groupby(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, std::vector<std::string>, GroupByOpType, ErrorMsg> parse_groupby(boost::property_tree::ptree const& ptree) {
     std::vector<std::string> tags;
+    GroupByOpType op = GroupByOpType::PIVOT;
     auto groupby = ptree.get_child_optional("group-by");
+    if (groupby) {
+        Logger::msg(AKU_LOG_ERROR, "'group-by' field is depricated, consider using 'group-by-tag' or 'pivot-by-tag'");
+    }
+    if (!groupby) {
+        groupby = ptree.get_child_optional("pivot-by-tag");
+    }
+    if (!groupby) {
+        groupby = ptree.get_child_optional("group-by-tag");
+        op = GroupByOpType::GROUP;
+    }
     if (groupby) {
         for (auto item: *groupby) {
             auto val = item.second.get_value_optional<std::string>();
@@ -520,11 +531,12 @@ static std::tuple<aku_Status, std::vector<std::string>, ErrorMsg> parse_groupby(
             } else {
                 return std::make_tuple(AKU_EQUERY_PARSING_ERROR,
                                        tags,
+                                       op,
                                        "Query object has ill-formed `group-by` field");
             }
         }
     }
-    return std::make_tuple(AKU_SUCCESS, tags, ErrorMsg());
+    return std::make_tuple(AKU_SUCCESS, tags, op, ErrorMsg());
 }
 
 /** Parse `limit` and `offset` statements, format:
@@ -850,6 +862,8 @@ std::tuple<aku_Status, ErrorMsg> validate_query(boost::property_tree::ptree cons
         "output",
         "order-by",
         "group-by",
+        "group-by-tag",
+        "pivot-by-tag",
         "limit",
         "offset",
         "range",
@@ -1193,14 +1207,15 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query
     }
 
     // Group-by statement
+    GroupByOpType op;
     std::vector<std::string> tags;
-    std::tie(status, tags, error) = parse_groupby(ptree);
+    std::tie(status, tags, op, error) = parse_groupby(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
     auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
-        groupbytag.reset(new GroupByTag(matcher, metric, tags));
+        groupbytag.reset(new GroupByTag(matcher, metric, tags, op));
     }
 
     // Order-by statment
@@ -1235,7 +1250,7 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query
     result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
-        result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+        result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->get_series_matcher());
     }
 
     std::tie(status, result.select.filters, result.select.filter_rule, error) = parse_filter(ptree, {metric});
@@ -1307,14 +1322,15 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
     }
 
     // Group-by statement
+    GroupByOpType op;
     std::vector<std::string> tags;
-    std::tie(status, tags, error) = parse_groupby(ptree);
+    std::tie(status, tags, op, error) = parse_groupby(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
     auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
-        groupbytag.reset(new GroupByTag(matcher, metrics, aggfun, tags));
+        groupbytag.reset(new GroupByTag(matcher, metrics, aggfun, tags, op));
     }
 
     // Order-by statment is disallowed
@@ -1417,6 +1433,49 @@ static std::tuple<aku_Status, ErrorMsg>
     return std::make_tuple(AKU_SUCCESS, ErrorMsg());
 }
 
+static std::tuple<aku_Status, ErrorMsg>
+    init_matcher_in_group_aggregate(
+            ReshapeRequest*                         req,
+            std::shared_ptr<GroupByTag>             groupbytag,
+            std::vector<AggregationFunction> const& func_names)
+{
+    auto matcher = std::make_shared<PlainSeriesMatcher>();
+    auto& gbtmatcher = groupbytag->get_series_matcher();
+    const auto& gbtmap = groupbytag->get_mapping();
+    std::vector<aku_ParamId> ids;
+    for (auto kv: gbtmap) {
+        ids.push_back(kv.second);
+    }
+    std::sort(ids.begin(), ids.end());
+    auto it = std::unique(ids.begin(), ids.end());
+    ids.erase(it, ids.end());
+    for (auto id: ids) {
+        auto sname = gbtmatcher.id2str(id);
+        std::string name(sname.first, sname.first + sname.second);
+        auto npos = name.find_first_of(' ');
+        if (npos == std::string::npos) {
+            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid series name.");
+            return std::make_tuple(AKU_EBAD_DATA, "Invalid series name `" + name + "`");
+        }
+        std::string metric_name = name.substr(0, npos);
+        auto tags = name.substr(npos);
+        std::stringstream str;
+        bool first = true;
+        for (auto func: func_names) {
+            if (first) {
+                first = false;
+            } else {
+                str << '|';
+            }
+            str << metric_name << ":" << Aggregation::to_string(func);
+        }
+        str << tags;
+        matcher->_add(str.str(), id);
+    }
+    req->select.matcher = matcher;
+    return std::make_tuple(AKU_SUCCESS, ErrorMsg());
+}
+
 std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggregate_query(
         boost::property_tree::ptree const& ptree,
         SeriesMatcher const& matcher)
@@ -1448,15 +1507,16 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
     }
 
     // Group-by statement
+    GroupByOpType op;
     std::vector<std::string> tags;
-    std::tie(status, tags, error) = parse_groupby(ptree);
+    std::tie(status, tags, op, error) = parse_groupby(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
     auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
         std::vector<std::string> fnames;
-        groupbytag.reset(new GroupByTag(matcher, gagg.metric, fnames, tags));
+        groupbytag.reset(new GroupByTag(matcher, gagg.metric, fnames, tags, op));
     }
 
     // Where statement
@@ -1505,15 +1565,19 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
         return std::make_tuple(status, result, error);
     }
 
-    std::tie(status, error) = init_matcher_in_group_aggregate(&result, matcher, gagg.func);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result, error);
-    }
-
-    result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
+        result.group_by.enabled = true;
+        std::tie(status, error) = init_matcher_in_group_aggregate(&result, groupbytag, gagg.func);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, result, error);
+        }
         result.group_by.transient_map = groupbytag->get_mapping();
-        result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+    }
+    else {
+        std::tie(status, error) = init_matcher_in_group_aggregate(&result, matcher, gagg.func);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, result, error);
+        }
     }
 
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
