@@ -1,6 +1,15 @@
 Release notes
 =============
 
+Version 0.8.65
+--------------
+
+IMPROVEMENT
+
+* Introduce pivot-by-tag and group-by-tag fields
+* Depricate group-by field
+* Group-aggregate query can be used with pivot/group-by-tag
+
 Version 0.8.64
 --------------
 

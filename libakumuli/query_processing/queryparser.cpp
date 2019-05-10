@@ -513,7 +513,9 @@ static std::tuple<aku_Status, std::vector<std::string>, GroupByOpType, ErrorMsg>
     std::vector<std::string> tags;
     GroupByOpType op = GroupByOpType::PIVOT;
     auto groupby = ptree.get_child_optional("group-by");
-    // TODO: depricate 'group-by' statement
+    if (groupby) {
+        Logger::msg(AKU_LOG_ERROR, "'group-by' field is depricated, consider using 'group-by-tag' or 'pivot-by-tag'");
+    }
     if (!groupby) {
         groupby = ptree.get_child_optional("pivot-by-tag");
     }
@@ -1444,7 +1446,7 @@ static std::tuple<aku_Status, ErrorMsg>
     for (auto kv: gbtmap) {
         ids.push_back(kv.second);
     }
-    std::stable_sort(ids.begin(), ids.end());
+    std::sort(ids.begin(), ids.end());
     auto it = std::unique(ids.begin(), ids.end());
     ids.erase(it, ids.end());
     for (auto id: ids) {
