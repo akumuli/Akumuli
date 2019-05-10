@@ -873,7 +873,6 @@ BOOST_AUTO_TEST_CASE(Test_storage_aggregate_query) {
         BOOST_REQUIRE_EQUAL(cursor.samples.size(), 4);
 
         std::vector<std::pair<std::string, double>> expected = {
-            // TODO: add :min and :max
             std::make_pair("cpu.user:min group=0", 1000),
             std::make_pair("cpu.user:min group=1", -100000),
             std::make_pair("cpu.syst:max group=0", 100990),
@@ -917,7 +916,7 @@ BOOST_AUTO_TEST_CASE(Test_storage_group_aggregate_query_0) {
     auto session = storage->create_write_session();
     fill_data(session, series_names, tss, xss);
 
-    /*{
+    {
         // Construct group-aggregate query
         const char* query = R"==(
                 {
@@ -971,7 +970,64 @@ BOOST_AUTO_TEST_CASE(Test_storage_group_aggregate_query_0) {
             BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), pmin);
             i++;
         }
-    }*/
+    }
+
+    {
+        // Construct group-aggregate query
+        const char* query = R"==(
+                {
+                    "group-aggregate": {
+                        "metric": ["cpu.user", "cpu.syst"],
+                        "step"  : 4000000,
+                        "func"  : "min"
+                    },
+                    "group-by-tag": [ "key" ],
+                    "order-by": "series",
+                    "range": {
+                        "from"  : 100000,
+                        "to"    : 10100000
+                    }
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+
+        std::vector<std::tuple<std::string, aku_Timestamp, double>> expected = {
+            std::make_tuple("cpu.user:min group=0", 100000, 1000),
+            std::make_tuple("cpu.user:min group=0", 4100000, 41000),
+            std::make_tuple("cpu.user:min group=0", 8100000, 81000),
+            std::make_tuple("cpu.user:min group=1", 100000, 1000),
+            std::make_tuple("cpu.user:min group=1", 4100000, 41000),
+            std::make_tuple("cpu.user:min group=1", 8100000, 81000),
+            std::make_tuple("cpu.syst:min group=0", 100000, 1000),
+            std::make_tuple("cpu.syst:min group=0", 4100000, 41000),
+            std::make_tuple("cpu.syst:min group=0", 8100000, 81000),
+            std::make_tuple("cpu.syst:min group=1", 100000, 1000),
+            std::make_tuple("cpu.syst:min group=1", 4100000, 41000),
+            std::make_tuple("cpu.syst:min group=1", 8100000, 81000),
+        };
+
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
+        BOOST_REQUIRE_EQUAL(cursor.tuples.size(), expected.size());
+
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            u64 bits;
+            memcpy(&bits, &sample.payload.float64, sizeof(u64));
+            BOOST_REQUIRE((bits >> 58) == 1);
+            BOOST_REQUIRE((bits & 1) == 1);
+            double pmin = cursor.tuples[i][0];
+            BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
+            BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
+            BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), pmin);
+            i++;
+        }
+    }
 
     {
         // Construct group-aggregate query
@@ -982,7 +1038,7 @@ BOOST_AUTO_TEST_CASE(Test_storage_group_aggregate_query_0) {
                         "step"  : 4000000,
                         "func"  : "min"
                     },
-                    "group-by-tag": [ "key" ],
+                    "pivot-by-tag": [ "group" ],
                     "order-by": "time",
                     "range": {
                         "from"  : 100000,
@@ -996,7 +1052,16 @@ BOOST_AUTO_TEST_CASE(Test_storage_group_aggregate_query_0) {
         BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
 
         std::vector<std::tuple<std::string, aku_Timestamp, double>> expected = {
+            std::make_tuple("cpu.user:min group=0", 100000, 1000),
+            std::make_tuple("cpu.user:min group=1", 100000, 1000),
+            std::make_tuple("cpu.user:min group=0", 4100000, 41000),
+            std::make_tuple("cpu.user:min group=1", 4100000, 41000),
+            std::make_tuple("cpu.user:min group=0", 8100000, 81000),
+            std::make_tuple("cpu.user:min group=1", 8100000, 81000),
         };
+
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
+        BOOST_REQUIRE_EQUAL(cursor.tuples.size(), expected.size());
 
         int i = 0;
         for (const auto& sample: cursor.samples) {
@@ -1005,8 +1070,12 @@ BOOST_AUTO_TEST_CASE(Test_storage_group_aggregate_query_0) {
             std::string sname(buffer, buffer + len);
             u64 bits;
             memcpy(&bits, &sample.payload.float64, sizeof(u64));
+            BOOST_REQUIRE((bits >> 58) == 1);
+            BOOST_REQUIRE((bits & 1) == 1);
             double pmin = cursor.tuples[i][0];
-            std::cout << sname << ", " << sample.timestamp << ", " << pmin << std::endl;
+            BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
+            BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
+            BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), pmin);
             i++;
         }
     }
@@ -1035,72 +1104,248 @@ BOOST_AUTO_TEST_CASE(Test_storage_group_aggregate_query_1) {
     auto session = storage->create_write_session();
     fill_data(session, series_names, tss, xss);
 
-    // Construct group-aggregate query
-    const char* query = R"==(
-            {
-                "group-aggregate": {
-                    "metric": ["cpu.user", "cpu.syst"],
-                    "step"  : 4000000,
-                    "func"  : ["min", "max"]
-                },
-                "range": {
-                    "from"  : 100000,
-                    "to"    : 10100000
-                }
-            })==";
+    {
+        // Construct group-aggregate query
+        const char* query = R"==(
+                {
+                    "group-aggregate": {
+                        "metric": ["cpu.user", "cpu.syst"],
+                        "step"  : 4000000,
+                        "func"  : ["min", "max"]
+                    },
+                    "range": {
+                        "from"  : 100000,
+                        "to"    : 10100000
+                    }
+                })==";
 
-    CursorMock cursor;
-    session->query(&cursor, query);
-    BOOST_REQUIRE(cursor.done);
-    BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
 
-    std::vector<std::tuple<std::string, aku_Timestamp, double, double>> expected = {
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=0", 100000, 1000, 40990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=1", 100000, 1000, 40990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=2", 100000, 1000, 40990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=3", 100000, 1000, 40990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=0 key=0", 100000, 1000, 40990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=0 key=1", 100000, 1000, 40990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=1 key=2", 100000, 1000, 40990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=1 key=3", 100000, 1000, 40990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=0", 4100000, 41000, 80990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=1", 4100000, 41000, 80990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=2", 4100000, 41000, 80990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=3", 4100000, 41000, 80990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=0 key=0", 4100000, 41000, 80990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=0 key=1", 4100000, 41000, 80990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=1 key=2", 4100000, 41000, 80990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=1 key=3", 4100000, 41000, 80990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=0", 8100000, 81000, 100990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=1", 8100000, 81000, 100990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=2", 8100000, 81000, 100990),
-        std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=3", 8100000, 81000, 100990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=0 key=0", 8100000, 81000, 100990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=0 key=1", 8100000, 81000, 100990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=1 key=2", 8100000, 81000, 100990),
-        std::make_tuple("cpu.user:min|cpu.user:max group=1 key=3", 8100000, 81000, 100990),
-    };
+        std::vector<std::tuple<std::string, aku_Timestamp, double, double>> expected = {
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=0", 100000, 1000, 40990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=1", 100000, 1000, 40990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=2", 100000, 1000, 40990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=3", 100000, 1000, 40990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0 key=0", 100000, 1000, 40990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0 key=1", 100000, 1000, 40990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1 key=2", 100000, 1000, 40990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1 key=3", 100000, 1000, 40990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=0", 4100000, 41000, 80990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=1", 4100000, 41000, 80990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=2", 4100000, 41000, 80990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=3", 4100000, 41000, 80990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0 key=0", 4100000, 41000, 80990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0 key=1", 4100000, 41000, 80990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1 key=2", 4100000, 41000, 80990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1 key=3", 4100000, 41000, 80990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=0", 8100000, 81000, 100990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0 key=1", 8100000, 81000, 100990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=2", 8100000, 81000, 100990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1 key=3", 8100000, 81000, 100990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0 key=0", 8100000, 81000, 100990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0 key=1", 8100000, 81000, 100990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1 key=2", 8100000, 81000, 100990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1 key=3", 8100000, 81000, 100990),
+        };
 
-    BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
-    BOOST_REQUIRE_EQUAL(cursor.tuples.size(), expected.size());
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
+        BOOST_REQUIRE_EQUAL(cursor.tuples.size(), expected.size());
 
-    int i = 0;
-    for (const auto& sample: cursor.samples) {
-        BOOST_REQUIRE((sample.payload.type & aku_PData::TUPLE_BIT) != 0);
-        char buffer[100];
-        int len = session->get_series_name(sample.paramid, buffer, 100);
-        std::string sname(buffer, buffer + len);
-        u64 bits;
-        memcpy(&bits, &sample.payload.float64, sizeof(u64));
-        BOOST_REQUIRE((bits >> 58) == 2);
-        BOOST_REQUIRE((bits & 3) == 3);
-        double pmin = cursor.tuples[i][0], pmax = cursor.tuples[i][1];
-        BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
-        BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
-        BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), pmin);
-        BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), pmax);
-        i++;
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            BOOST_REQUIRE((sample.payload.type & aku_PData::TUPLE_BIT) != 0);
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            u64 bits;
+            memcpy(&bits, &sample.payload.float64, sizeof(u64));
+            BOOST_REQUIRE((bits >> 58) == 2);
+            BOOST_REQUIRE((bits & 3) == 3);
+            double pmin = cursor.tuples[i][0], pmax = cursor.tuples[i][1];
+            BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
+            BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
+            BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), pmin);
+            BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), pmax);
+            i++;
+        }
     }
+
+    {
+        // Construct group-aggregate query
+        const char* query = R"==(
+                {
+                    "group-aggregate": {
+                        "metric": ["cpu.user", "cpu.syst"],
+                        "step"  : 4000000,
+                        "func"  : ["min", "max"]
+                    },
+                    "group-by-tag": ["key"],
+                    "range": {
+                        "from"  : 100000,
+                        "to"    : 10100000
+                    }
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+
+        std::vector<std::tuple<std::string, aku_Timestamp, double, double>> expected = {
+            std::make_tuple("cpu.user:min|cpu.user:max group=0", 100000, 1000, 40990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1", 100000, 1000, 40990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0", 100000, 1000, 40990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1", 100000, 1000, 40990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0", 4100000, 41000, 80990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1", 4100000, 41000, 80990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0", 4100000, 41000, 80990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1", 4100000, 41000, 80990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0", 8100000, 81000, 100990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1", 8100000, 81000, 100990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0", 8100000, 81000, 100990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1", 8100000, 81000, 100990),
+        };
+
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
+        BOOST_REQUIRE_EQUAL(cursor.tuples.size(), expected.size());
+
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            BOOST_REQUIRE((sample.payload.type & aku_PData::TUPLE_BIT) != 0);
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            u64 bits;
+            memcpy(&bits, &sample.payload.float64, sizeof(u64));
+            BOOST_REQUIRE((bits >> 58) == 2);
+            BOOST_REQUIRE((bits & 3) == 3);
+            double pmin = cursor.tuples[i][0], pmax = cursor.tuples[i][1];
+            BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
+            BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
+            BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), pmin);
+            BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), pmax);
+            i++;
+        }
+    }
+
+    {
+        // Construct group-aggregate query
+        const char* query = R"==(
+                {
+                    "group-aggregate": {
+                        "metric": ["cpu.user", "cpu.syst"],
+                        "step"  : 4000000,
+                        "func"  : ["min", "max"]
+                    },
+                    "group-by-tag": ["key"],
+                    "range": {
+                        "from"  : 10100000,
+                        "to"    : 100000
+                    }
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+
+        std::vector<std::tuple<std::string, aku_Timestamp, double, double>> expected = {
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1", 10100000, 61010, 100990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0", 10100000, 61010, 100990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1", 10100000, 61010, 100990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0", 10100000, 61010, 100990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1", 6100000, 21010, 61000),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0", 6100000, 21010, 61000),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1", 6100000, 21010, 61000),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0", 6100000, 21010, 61000),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1", 2100000, 1010, 21000),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0", 2100000, 1010, 21000),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1", 2100000, 1010, 21000),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0", 2100000, 1010, 21000),
+        };
+
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
+        BOOST_REQUIRE_EQUAL(cursor.tuples.size(), expected.size());
+
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            BOOST_REQUIRE((sample.payload.type & aku_PData::TUPLE_BIT) != 0);
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            u64 bits;
+            memcpy(&bits, &sample.payload.float64, sizeof(u64));
+            BOOST_REQUIRE((bits >> 58) == 2);
+            BOOST_REQUIRE((bits & 3) == 3);
+            double pmin = cursor.tuples[i][0], pmax = cursor.tuples[i][1];
+            BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
+            BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
+            BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), pmin);
+            BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), pmax);
+            i++;
+        }
+    }
+
+    {
+        // Construct group-aggregate query
+        const char* query = R"==(
+                {
+                    "group-aggregate": {
+                        "metric"     : ["cpu.user", "cpu.syst"],
+                        "step"       : 4000000,
+                        "func"       : ["min", "max"]},
+                    "group-by-tag"   : ["key"],
+                    "order-by"       : "series",
+                    "range"          : {
+                        "from"       : 100000,
+                        "to"         : 10100000}
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+
+        std::vector<std::tuple<std::string, aku_Timestamp, double, double>> expected = {
+            std::make_tuple("cpu.user:min|cpu.user:max group=0", 100000, 1000, 40990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0", 4100000, 41000, 80990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=0", 8100000, 81000, 100990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1", 100000, 1000, 40990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1", 4100000, 41000, 80990),
+            std::make_tuple("cpu.user:min|cpu.user:max group=1", 8100000, 81000, 100990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0", 100000, 1000, 40990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0", 4100000, 41000, 80990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=0", 8100000, 81000, 100990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1", 100000, 1000, 40990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1", 4100000, 41000, 80990),
+            std::make_tuple("cpu.syst:min|cpu.syst:max group=1", 8100000, 81000, 100990),
+        };
+
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
+        BOOST_REQUIRE_EQUAL(cursor.tuples.size(), expected.size());
+
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            BOOST_REQUIRE((sample.payload.type & aku_PData::TUPLE_BIT) != 0);
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            u64 bits;
+            memcpy(&bits, &sample.payload.float64, sizeof(u64));
+            BOOST_REQUIRE((bits >> 58) == 2);
+            BOOST_REQUIRE((bits & 3) == 3);
+            double pmin = cursor.tuples[i][0], pmax = cursor.tuples[i][1];
+            BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
+            BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
+            BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), pmin);
+            BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), pmax);
+            i++;
+        }
+    }
+
 }
 
 // Test where clause

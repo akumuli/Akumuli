@@ -409,7 +409,7 @@ struct GroupAggregateCombiner_Initializer<OrderBy::SERIES> {
     {
         std::unique_ptr<ColumnMaterializer> mat;
         mat.reset(new SeriesOrderAggregateMaterializer(std::move(ids), std::move(agglist), fn));
-        return std::move(mat);
+        return mat;
     }
 };
 
@@ -424,7 +424,7 @@ struct GroupAggregateCombiner_Initializer<OrderBy::TIME> {
         std::vector<std::unique_ptr<AggregateOperator>> tmpiters(std::move(agglist));
         std::unique_ptr<ColumnMaterializer> mat;
         mat.reset(new TimeOrderAggregateMaterializer(tmpids, tmpiters, fn));
-        return std::move(mat);
+        return mat;
     }
 };
 

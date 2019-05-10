@@ -1431,6 +1431,49 @@ static std::tuple<aku_Status, ErrorMsg>
     return std::make_tuple(AKU_SUCCESS, ErrorMsg());
 }
 
+static std::tuple<aku_Status, ErrorMsg>
+    init_matcher_in_group_aggregate(
+            ReshapeRequest*                         req,
+            std::shared_ptr<GroupByTag>             groupbytag,
+            std::vector<AggregationFunction> const& func_names)
+{
+    auto matcher = std::make_shared<PlainSeriesMatcher>();
+    auto& gbtmatcher = groupbytag->get_series_matcher();
+    const auto& gbtmap = groupbytag->get_mapping();
+    std::vector<aku_ParamId> ids;
+    for (auto kv: gbtmap) {
+        ids.push_back(kv.second);
+    }
+    std::stable_sort(ids.begin(), ids.end());
+    auto it = std::unique(ids.begin(), ids.end());
+    ids.erase(it, ids.end());
+    for (auto id: ids) {
+        auto sname = gbtmatcher.id2str(id);
+        std::string name(sname.first, sname.first + sname.second);
+        auto npos = name.find_first_of(' ');
+        if (npos == std::string::npos) {
+            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid series name.");
+            return std::make_tuple(AKU_EBAD_DATA, "Invalid series name `" + name + "`");
+        }
+        std::string metric_name = name.substr(0, npos);
+        auto tags = name.substr(npos);
+        std::stringstream str;
+        bool first = true;
+        for (auto func: func_names) {
+            if (first) {
+                first = false;
+            } else {
+                str << '|';
+            }
+            str << metric_name << ":" << Aggregation::to_string(func);
+        }
+        str << tags;
+        matcher->_add(str.str(), id);
+    }
+    req->select.matcher = matcher;
+    return std::make_tuple(AKU_SUCCESS, ErrorMsg());
+}
+
 std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggregate_query(
         boost::property_tree::ptree const& ptree,
         SeriesMatcher const& matcher)
@@ -1520,15 +1563,19 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
         return std::make_tuple(status, result, error);
     }
 
-    std::tie(status, error) = init_matcher_in_group_aggregate(&result, matcher, gagg.func);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, result, error);
-    }
-
-    result.group_by.enabled = static_cast<bool>(groupbytag);
     if (groupbytag) {
+        result.group_by.enabled = true;
+        std::tie(status, error) = init_matcher_in_group_aggregate(&result, groupbytag, gagg.func);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, result, error);
+        }
         result.group_by.transient_map = groupbytag->get_mapping();
-        result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->get_series_matcher());
+    }
+    else {
+        std::tie(status, error) = init_matcher_in_group_aggregate(&result, matcher, gagg.func);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, result, error);
+        }
     }
 
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());

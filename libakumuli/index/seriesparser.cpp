@@ -633,7 +633,8 @@ GroupByTag::GroupByTag(const SeriesMatcher &matcher, std::string metric, std::ve
 GroupByTag::GroupByTag(const SeriesMatcher &matcher,
                        const std::vector<std::string>& metrics,
                        const std::vector<std::string> &func_names,
-                       std::vector<std::string> const& tags, GroupByOpType op)
+                       std::vector<std::string> const& tags,
+                       GroupByOpType op)
     : matcher_(matcher)
     , offset_{}
     , prev_size_(0)

@@ -67,6 +67,7 @@ void FanInAggregateOperator::add(std::unique_ptr<AggregateOperator>&& it) {
 }
 
 std::tuple<aku_Status, size_t> FanInAggregateOperator::read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
+    static const aku_Timestamp MAX_TS = std::numeric_limits<aku_Timestamp>::max();
     if (size == 0) {
         return std::make_tuple(AKU_EBAD_ARG, 0);
     }
@@ -75,37 +76,49 @@ std::tuple<aku_Status, size_t> FanInAggregateOperator::read(aku_Timestamp *destt
     }
     const size_t SZBUF = iter_.size();
     aku_Status status = AKU_ENO_DATA;
-    aku_Timestamp tsresult = 0;
     std::vector<AggregationResult> outval(SZBUF, INIT_AGGRES);
-    std::vector<aku_Timestamp> outts(SZBUF, 0);
+    std::vector<aku_Timestamp> outts(SZBUF, MAX_TS);
     ssize_t ressz;
     size_t ixout = 0;
+    aku_Timestamp tsmin = MAX_TS;
     while (ixout < size) {
         int ix = 0;
         u32 nz = 0;
         for (auto& it: iter_) {
-            std::tie(status, ressz) = it->read(&outts[ix], &outval[ix], 1);
-            if (ressz == 0) {
-                outval[ix] = INIT_AGGRES;
-                nz++;
-            }
-            if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
-                return std::make_pair(status, 0);
-            }
-            if (nz == outval.size()) {
-                return std::make_pair(AKU_ENO_DATA, ixout);
+            // On the first iteration all values will match. On any other iteration
+            // only the ones that needs to be updated will match.
+            if (outts[ix] == tsmin) {
+                std::tie(status, ressz) = it->read(&outts[ix], &outval[ix], 1);
+                if (ressz == 0) {
+                    outval[ix] = INIT_AGGRES;
+                    outts[ix] = MAX_TS;
+                    nz++;
+                }
+                if (status != AKU_SUCCESS && status != AKU_ENO_DATA) {
+                    return std::make_pair(status, 0);
+                }
+                if (nz == outval.size()) {
+                    return std::make_pair(AKU_ENO_DATA, ixout);
+                }
             }
             ix++;
         }
+        tsmin = std::accumulate(outts.begin(), outts.end(), MAX_TS,
+                                [](aku_Timestamp lhs, aku_Timestamp rhs) {
+            return std::min(lhs, rhs);
+        });
+        if (tsmin == MAX_TS) {
+            return std::make_pair(AKU_ENO_DATA, ixout);
+        }
         AggregationResult xsresult = INIT_AGGRES;
-        xsresult = std::accumulate(outval.begin(), outval.end(), xsresult,
-                        [](AggregationResult lhs, AggregationResult rhs) {
-                            lhs.combine(rhs);
-                            return lhs;
-                        });
-        tsresult = outts.front();
+        for (u32 i = 0; i < iter_.size(); i++) {
+            // Invariant: at least one index matches by definition
+            if (outts[i] == tsmin) {
+                xsresult.combine(outval[i]);
+            }
+        }
         destval[ixout] = xsresult;
-        destts [ixout] = tsresult;
+        destts [ixout] = tsmin;
         ixout++;
     }
     return std::make_tuple(AKU_SUCCESS, ixout);
