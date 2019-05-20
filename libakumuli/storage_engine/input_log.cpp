@@ -12,12 +12,22 @@ namespace Akumuli {
 
 const static u16 V1_MAGIC = 0x1;
 
+LogSequencer::LogSequencer(StorageEngine::BlockStore *bstore)
+    : bstore_(bstore)
+    , counter_(0)
+{
+}
+
 LogSequencer::LogSequencer()
-    : counter_{0}
+    : bstore_(nullptr)
+    , counter_(0)
 {
 }
 
 u64 LogSequencer::next() {
+    if (bstore_ != nullptr) {
+        return static_cast<u64>(bstore_->get_top_address());
+    }
     return counter_++;
 }
 
@@ -808,11 +818,14 @@ aku_Status InputLog::flush(std::vector<u64>* stale_ids) {
 // ShardedInputLog //
 //                 //
 
+
 ShardedInputLog::ShardedInputLog(int concurrency,
                                  const char* rootdir,
                                  size_t nvol,
-                                 size_t svol)
+                                 size_t svol,
+                                 StorageEngine::BlockStore *bstore)
     : concurrency_(concurrency)
+    , sequencer_(bstore)
     , read_only_(false)
     , read_started_(false)
     , rootdir_(rootdir)

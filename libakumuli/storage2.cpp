@@ -543,7 +543,8 @@ void Storage::initialize_input_log(const aku_FineTuneParams &params) {
         inputlog_.reset(new ShardedInputLog(static_cast<int>(params.input_log_concurrency),
                                             params.input_log_path,
                                             params.input_log_volume_numb,
-                                            params.input_log_volume_size));
+                                            params.input_log_volume_size,
+                                            bstore_.get()));
 
         input_log_path_ = params.input_log_path;
     }

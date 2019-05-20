@@ -15,6 +15,7 @@
 
 #include "akumuli_def.h"
 #include "lz4.h"
+#include "blockstore.h"
 
 
 // Fwd declaration
@@ -71,8 +72,10 @@ struct InputLogRow {
  */
 struct LogSequencer {
 
+    StorageEngine::BlockStore *bstore_;
     std::atomic<u64> counter_;
 
+    LogSequencer(StorageEngine::BlockStore *bstore);
     LogSequencer();
     ~LogSequencer() = default;
 
@@ -356,7 +359,7 @@ public:
      * @param nvol is a limit on number of volumes (per thread)
      * @param svol is a limit on a size of the individual volume
      */
-    ShardedInputLog(int concurrency, const char* rootdir, size_t nvol, size_t svol);
+    ShardedInputLog(int concurrency, const char* rootdir, size_t nvol, size_t svol, StorageEngine::BlockStore *bstore=nullptr);
 
     /**
      * @brief Create SharedInputLog that can be used to recover the data
