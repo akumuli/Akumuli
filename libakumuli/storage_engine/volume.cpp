@@ -147,6 +147,120 @@ void IOVecBlock::set_write_pos(int pos) {
     pos_ = pos;
 }
 
+void IOVecBlock::copy_from(const IOVecBlock& other) {
+    // Single chunk
+    if (other.data_[0].size() == AKU_BLOCK_SIZE) {
+        u32 cons = 0;
+        for (int i = 0; i < NCOMPONENTS; i++) {
+            data_[i].resize(COMPONENT_SIZE);
+            read(data_[i].data(), other.data_[0].data() + cons, COMPONENT_SIZE);
+            cons += COMPONENT_SIZE;
+        }
+    }
+    // Four components
+    else {
+        for (int i = 0; i < NCOMPONENTS; i++) {
+            if (other.data_[i].size() == 0) {
+                return;
+            }
+            data_[i].resize(COMPONENT_SIZE);
+            read(data_[i].data(), other.data_[i].data(), COMPONENT_SIZE);
+        }
+    }
+}
+
+u32 IOVecBlock::read(void* dest, u32 offset, u32 size) {
+    if (data_[0].size() == AKU_BLOCK_SIZE) {
+        read(dest, data_[0].data() + offset, size);
+    }
+    else {
+        // Locate the component first
+        u32 ixbegin  = offset / IOVecBlock::COMPONENT_SIZE;
+        u32 offbegin = offset % IOVecBlock::COMPONENT_SIZE;
+        u32 end      = offset + size;
+        u32 ixend    = end / IOVecBlock::COMPONENT_SIZE;
+        if (ixbegin == ixend) {
+            // Fast path, access single component
+            if (block_->get_size(ixbegin) == 0) {
+                return 0;
+            }
+            u8* source = block_->get_data(ixbegin);
+            read(dest, source + offset, size);
+        }
+        else {
+            // Read from two components
+            if (block_->get_size(ixbegin) == 0) {
+                return 0;
+            }
+            u8* c1 = block_->get_data(ixbegin);
+            u32 l1  = IOVecBlock::COMPONENT_SIZE - offbegin;
+            read(dest, c1 + offbegin, l1);
+            // Write second component
+            if (block_->get_size(ixend) == 0) {
+                return 0;
+            }
+            u32 l2 = size - l1;
+            u8* c2 = block_->get_data(ixend);
+            read(dest + l1, c2, l2);
+        }
+    }
+    return size;
+}
+
+u32 IOVecBlock::write(const void* source, u32 size) {
+    if (data_[0].size() == AKU_BLOCK_SIZE) {
+        // Fast path
+        if (pos_ + size > AKU_BLOCK_SIZE) {
+            return 0;
+        }
+        memcpy(data_[0].data() + pos_, source, size);
+        pos_ += size;
+    }
+    else {
+        int ixbegin  = pos_ / IOVecBlock::COMPONENT_SIZE;
+        int offbegin = pos_ % IOVecBlock::COMPONENT_SIZE;
+        int end      = pos_ + size;
+        int ixend    = end / IOVecBlock::COMPONENT_SIZE;
+        if (ixbegin >= IOVecBlock::NCOMPONENTS || ixend >= IOVecBlock::NCOMPONENTS) {
+            return 0;
+        }
+        if (ixbegin == ixend) {
+            // Fast path, write to the single component
+            if (block_->get_size(ixbegin) == 0) {
+                int ixadd = block_->add();
+                if (static_cast<u32>(ixadd) != ixbegin) {
+                    AKU_PANIC("IOVec block corrupted");
+                }
+            }
+            u8* dest = block_->get_data(ixbegin);
+            memcpy(dest + offbegin, source, size);
+        }
+        else {
+            // Write to two components
+            if (block_->get_size(ixbegin) == 0) {
+                int ixadd = block_->add();
+                if (static_cast<u32>(ixadd) != ixbegin) {
+                    AKU_PANIC("First IOVec block corrupted");
+                }
+            }
+            u8* c1 = block_->get_data(ixbegin);
+            u32 l1  = IOVecBlock::COMPONENT_SIZE - offbegin;
+            memcpy(c1 + offbegin, source, l1);
+            // Write second component
+            if (block_->get_size(ixend) == 0) {
+                int ixadd = block_->add();
+                if (static_cast<u32>(ixadd) != ixend) {
+                    AKU_PANIC("Second IOVec blcok corrupted");
+                }
+            }
+            u32 l2 = size - l1;
+            u8* c2 = block_->get_data(ixend);
+            memcpy(c2, source + l1, l2);
+        }
+    }
+    return pos_;
+}
+
 //--
 
 const u8* IOVecBlock::get_data(int component) const {

@@ -94,8 +94,16 @@ struct NBTreeCandlestickHint {
     aku_Timestamp min_delta;
 };
 
+struct SuperblockAppender {
+    ~SuperblockAppender() = default;
+    virtual aku_Status append(SubtreeRef const& p) = 0;
+    virtual bool top(SubtreeRef* outref) const = 0;
+    virtual bool top(LogicAddr* outaddr) const = 0;
+};
+
 
 class NBTreeSuperblock;
+class IOVecSuperblock;
 
 /** NBTree leaf node. Supports append operation.
   * Can be commited to block store when full.
@@ -228,7 +236,7 @@ public:
     std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
                                                  aku_Timestamp pivot,
                                                  bool preserve_backrefs, u16 *fanout_index,
-                                                 NBTreeSuperblock* top_level);
+                                                 SuperblockAppender *top_level);
 
 
     /**
@@ -364,7 +372,7 @@ public:
     std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
                                                  aku_Timestamp pivot,
                                                  bool preserve_backrefs, u16 *fanout_index,
-                                                 NBTreeSuperblock* top_level);
+                                                 SuperblockAppender* top_level);
 
 
     /**
@@ -382,7 +390,7 @@ public:
 
 /** NBTree superblock. Stores refs to subtrees.
  */
-class NBTreeSuperblock {
+class NBTreeSuperblock : public SuperblockAppender {
     std::shared_ptr<Block> block_;
     aku_ParamId            id_;
     u32                    write_pos_;
@@ -479,7 +487,122 @@ public:
     std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
                                                  aku_Timestamp pivot,
                                                  bool preserve_horizontal_links,
-                                                 NBTreeSuperblock *root);
+                                                 SuperblockAppender *root);
+
+    /**
+     * @brief Split the node
+     * @param bstore is a link to backstore
+     * @param pivot is a timestamp to pivot
+     * @param preserve_horizontal_links is a flag that should be set to true to preserve the backrefs correctness (only
+     *        needed for the topmost node)
+     * @return status, address of the current node (or empty if root was used), address of the last child (if preserve_horizontal_links
+     *         was set to true)
+     */
+    std::tuple<aku_Status, LogicAddr, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
+                                                 aku_Timestamp pivot,
+                                                 bool preserve_horizontal_links);
+};
+
+/** NBTree superblock. Stores refs to subtrees.
+ */
+class IOVecSuperblock : public SuperblockAppender {
+    std::shared_ptr<IOVecBlock> block_;
+    aku_ParamId                 id_;
+    u32                         write_pos_;
+    u16                         fanout_index_;
+    u16                         level_;
+    LogicAddr                   prev_;
+    bool                        immutable_;
+
+public:
+    //! Create new writable node.
+    IOVecSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
+
+    //! Read immutable node from block-store.
+    IOVecSuperblock(std::shared_ptr<IOVecBlock> block);
+
+    //! Read immutable node from block-store.
+    IOVecSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
+
+    //! Copy on write c-tor. Create new node, copy content referenced by address, remove last entery if needed.
+    IOVecSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last);
+
+    //! Append subtree ref
+    aku_Status append(SubtreeRef const& p);
+
+    //! Commit changes (even if node is not full)
+    std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
+
+    //! Check if node is full (always true if node is immutable - c-tor #2)
+    bool is_full() const;
+
+    aku_Status read_all(std::vector<SubtreeRef>* refs) const;
+
+    bool top(SubtreeRef* outref) const;
+
+    bool top(LogicAddr* outaddr) const;
+
+    //! Get node's level
+    u16 get_level() const;
+
+    //! Get fanout index of the node
+    u16 get_fanout() const;
+
+    SubtreeRef const* get_sblockmeta() const;
+
+    size_t nelements() const;
+
+    //! Return id of the tree
+    aku_ParamId get_id() const;
+
+    //! Return addr of the previous node
+    LogicAddr get_prev_addr() const;
+
+    //! Set previous addr for the node
+    void set_prev_addr(LogicAddr addr);
+
+    //! Change fanout index ouf the node
+    void set_node_fanout(u16 newfanout);
+
+    //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
+    LogicAddr get_addr() const;
+
+    //! Read timestamps
+    std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
+
+    std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end, std::shared_ptr<BlockStore> bstore) const;
+
+    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
+                                               aku_Timestamp end,
+                                               const ValueFilter& filter, std::shared_ptr<BlockStore> bstore) const;
+
+    std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin,
+                                                aku_Timestamp end,
+                                                std::shared_ptr<BlockStore> bstore) const;
+
+    std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end,
+                                                   std::shared_ptr<BlockStore> bstore,
+                                                   NBTreeCandlestickHint hint) const;
+
+    //! Group-aggregate query results iterator
+    std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin,
+                                                      aku_Timestamp end,
+                                                      u64 step, std::shared_ptr<BlockStore> bstore) const;
+
+    // Node split experiment //
+    /**
+     * @brief Split the node (the results are copied to the provided node)
+     * @param bstore is a link to backstore
+     * @param pivot is a timestamp to pivot
+     * @param preserve_horizontal_links is a flag that should be set to true to preserve the backrefs correctness (only
+     *        needed for the topmost node)
+     * @param root is a new root node (all content of this node will be copied there alongside the updated refs)
+     * @return status, address of the last child (if preserve_horizontal_links was set to true)
+     */
+    std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
+                                                 aku_Timestamp pivot,
+                                                 bool preserve_horizontal_links,
+                                                 SuperblockAppender *root);
 
     /**
      * @brief Split the node
