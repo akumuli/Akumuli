@@ -185,7 +185,7 @@ u32 IOVecBlock::read_chunk(void* dest, u32 offset, u32 size) {
                 return 0;
             }
             u8* source = data_[ixbegin].data();
-            memcpy(dest, source + offset, size);
+            memcpy(dest, source + offbegin, size);
         }
         else {
             // Read from two components
