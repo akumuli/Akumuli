@@ -2720,7 +2720,7 @@ IOVecSuperblock::IOVecSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16
 {
     SubtreeRef ref = {};
     ref.type = NBTreeBlockType::INNER;
-    block_->write(&ref, sizeof(ref));
+    block_->append_chunk(&ref, sizeof(ref));
     assert(prev_ != 0);
 }
 
@@ -2761,7 +2761,11 @@ IOVecSuperblock::IOVecSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bst
     }
     assert(prev_ != 0);
     // We can't use zero-copy here because `block` belongs to other node.
-    block_->copy_from(block.get());
+    block_->copy_from(*block);
+
+    // Shrink block size if possible to save memory
+    int bytes_used = static_cast<int>((write_pos_ + 1) * sizeof(SubtreeRef));
+    block_->set_write_pos_and_shrink(bytes_used);
 }
 
 SubtreeRef const* IOVecSuperblock::get_sblockmeta() const {
@@ -2813,46 +2817,11 @@ aku_Status IOVecSuperblock::append(const SubtreeRef &p) {
         return AKU_EBAD_DATA;
     }
     // Write data into buffer
-    SubtreeRef* pref = subtree_cast(block_->get_data(0));
-    u32 begin    = sizeof(SubtreeRef) * (write_pos_ + 1);
-    u32 ixbegin  = begin / IOVecBlock::COMPONENT_SIZE;
-    u32 offbegin = begin % IOVecBlock::COMPONENT_SIZE;
-    u32 end      = begin + sizeof(SubtreeRef);
-    u32 ixend    = end / IOVecBlock::COMPONENT_SIZE;
-    if (ixbegin == ixend) {
-        // Fast path, write to the same component
-        if (block_->get_size(ixbegin) == 0) {
-            int ixadd = block_->add();
-            if (static_cast<u32>(ixadd) != ixbegin) {
-                AKU_PANIC("Superblock corrupted");
-            }
-        }
-        u8* dest = block_->get_data(ixbegin);
-        memcpy(dest + offbegin, &p, sizeof(SubtreeRef));
+    u32 bytes_written = block_->append_chunk(&p, sizeof(SubtreeRef));
+    if (bytes_written == 0) {
+        return AKU_ENO_MEM;
     }
-    else {
-        // Only 4 elements out of 32 will be written using this code path
-        // Write first component
-        if (block_->get_size(ixbegin) == 0) {
-            int ixadd = block_->add();
-            if (static_cast<u32>(ixadd) != ixbegin) {
-                AKU_PANIC("Superblock corrupted");
-            }
-        }
-        u8* c1 = block_->get_data(ixbegin);
-        u32 l1  = IOVecBlock::COMPONENT_SIZE - offbegin;
-        memcpy(c1 + offbegin, &p, l1);
-        // Write second component
-        if (block_->get_size(ixend) == 0) {
-            int ixadd = block_->add();
-            if (static_cast<u32>(ixadd) != ixend) {
-                AKU_PANIC("Superblock corrupted");
-            }
-        }
-        u32 l2 = sizeof(SubtreeRef) - l1;
-        u8* c2 = block_->get_data(ixend);
-        memcpy(c2, reinterpret_cast<const u8*>(&p) + l1, l2);
-    }
+    SubtreeRef* pref = reinterpret_cast<SubtreeRef*>(block_->get_data(0));
     if (write_pos_ == 0) {
         pref->begin = p.begin;
     }
@@ -2891,7 +2860,7 @@ bool IOVecSuperblock::is_full() const {
 aku_Status IOVecSuperblock::read_all(std::vector<SubtreeRef>* refs) const {
     for(u32 ix = 0u; ix < write_pos_; ix++) {
         SubtreeRef item;
-        u32 res = block_->read(&item, sizeof(SubtreeRef) * (ix + 1), sizeof(SubtreeRef));
+        u32 res = block_->read_chunk(&item, sizeof(SubtreeRef) * (ix + 1), sizeof(SubtreeRef));
         if (res == 0) {
             return AKU_EBAD_DATA;
         }
@@ -2906,7 +2875,7 @@ bool IOVecSuperblock::top(SubtreeRef* outref) const {
     }
     SubtreeRef item;
     u32 offset = sizeof(item) * write_pos_;
-    u32 res = block_->read(&item, offset, sizeof(item));
+    u32 res = block_->read_chunk(&item, offset, sizeof(item));
     if (res == 0) {
         return AKU_EBAD_DATA;
     }

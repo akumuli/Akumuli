@@ -158,12 +158,17 @@ struct IOVecBlock {
     /** Copy 'size' bytes into 'dest' starting from 'offset'.
       * Return number of copied bytes.
       */
-    u32 read(void *dest, u32 offset, u32 size);
+    u32 read_chunk(void *dest, u32 offset, u32 size);
 
     /** Copy 'size' bytes into the block starting from 'source'.
       * Return number of new write pos or 0 on error.
       */
-    u32 write(const void *source, u32 size);
+    u32 append_chunk(const void *source, u32 size);
+
+    /** Adjust write pos.
+      * Try to shrink the block by deallocating unused chunks.
+      */
+    void set_write_pos_and_shrink(int top);
 };
 
 typedef std::unique_ptr<apr_pool_t, void (*)(apr_pool_t*)> AprPoolPtr;
