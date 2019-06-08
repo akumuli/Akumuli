@@ -586,7 +586,7 @@ std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> ExpandableFileStorage::read_
     }
     // Read the volume
     std::unique_ptr<IOVecBlock> block;
-    std::tie(status, block) = volumes_[vol]->read_block(vol);
+    std::tie(status, block) = volumes_[gen]->read_block(vol);
     if (status == AKU_SUCCESS) {
         return std::make_tuple(status, std::move(block));
     }
