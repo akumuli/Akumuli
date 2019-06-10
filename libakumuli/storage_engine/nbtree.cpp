@@ -3470,6 +3470,7 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
     return std::make_tuple(parent_saved, addr);
 }
 
+
 // ////////////////////// //
 //   NBTreeSBlockExtent   //
 // ////////////////////// //
