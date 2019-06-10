@@ -193,7 +193,7 @@ aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out) {
 }
 
 //! Initialize object from leaf node
-static aku_Status init_subtree_from_leaf(const IOVecLeaf& leaf, SubtreeRef& out) {
+aku_Status init_subtree_from_leaf(const IOVecLeaf& leaf, SubtreeRef& out) {
     if (leaf.nelements() == 0) {
         return AKU_EBAD_ARG;
     }

@@ -571,7 +571,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_recovery_7) {
 // Test iteration
 
 void test_nbtree_leaf_iteration(aku_Timestamp begin, aku_Timestamp end) {
-    NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
+    IOVecLeaf leaf(42, EMPTY_ADDR, 0);
     aku_Timestamp last_successfull = 100;
     aku_Timestamp first_timestamp = 100;
     for (size_t ix = first_timestamp; true; ix++) {
@@ -688,7 +688,7 @@ AggregationResult calculate_expected_value(std::vector<double> const& xss) {
 }
 
 void test_nbtree_leaf_aggregation(aku_Timestamp begin, aku_Timestamp end) {
-    NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
+    IOVecLeaf leaf(42, EMPTY_ADDR, 0);
     aku_Timestamp first_timestamp = 100;
     std::vector<double> xss;
     RandomWalk rwalk(0.0, 1.0, 1.0);
@@ -1448,7 +1448,7 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_backward) {
 }
 
 template<class Cont>
-static void fill_leaf(NBTreeLeaf* leaf, Cont tss) {
+static void fill_leaf(IOVecLeaf* leaf, Cont tss) {
     for (auto ts: tss) {
         auto status = leaf->append(ts, ts*0.1);
         if (status != AKU_SUCCESS) {
@@ -1457,7 +1457,7 @@ static void fill_leaf(NBTreeLeaf* leaf, Cont tss) {
     }
 }
 
-static LogicAddr save_leaf(NBTreeLeaf* leaf, NBTreeSuperblock* parent, std::shared_ptr<BlockStore> bstore) {
+static LogicAddr save_leaf(IOVecLeaf* leaf, IOVecSuperblock* parent, std::shared_ptr<BlockStore> bstore) {
     aku_Status status;
     LogicAddr  result;
     std::tie(status, result) = leaf->commit(bstore);
@@ -1480,10 +1480,10 @@ static LogicAddr save_leaf(NBTreeLeaf* leaf, NBTreeSuperblock* parent, std::shar
 /**
  * @brief Read block from block store, expect success
  */
-static std::shared_ptr<Block> read_block(std::shared_ptr<BlockStore> bstore, LogicAddr addr) {
+static std::shared_ptr<IOVecBlock> read_block(std::shared_ptr<BlockStore> bstore, LogicAddr addr) {
     aku_Status status;
-    std::shared_ptr<Block> block;
-    std::tie(status, block) = bstore->read_block(addr);
+    std::shared_ptr<IOVecBlock> block;
+    std::tie(status, block) = bstore->read_iovec_block(addr);
     if (status != AKU_SUCCESS) {
         throw std::runtime_error("can't read block");
     }
@@ -1515,17 +1515,17 @@ void test_node_split_algorithm_lvl2(aku_Timestamp pivot, std::map<int, std::vect
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     const aku_ParamId id = 42;
     LogicAddr prev = EMPTY_ADDR;
-    NBTreeSuperblock sblock(id, EMPTY_ADDR, 0, 1);
+    IOVecSuperblock sblock(id, EMPTY_ADDR, 0, 1);
     // 0
-    NBTreeLeaf l0(id, prev, 0);
+    IOVecLeaf l0(id, prev, 0);
     fill_leaf(&l0, tss[0]);
     prev = save_leaf(&l0, &sblock, bstore);
     // 1
-    NBTreeLeaf l1(id, prev, 1);
+    IOVecLeaf l1(id, prev, 1);
     fill_leaf(&l1, tss[1]);
     prev = save_leaf(&l1, &sblock, bstore);
     // 2
-    NBTreeLeaf l2(id, prev, 2);
+    IOVecLeaf l2(id, prev, 2);
     fill_leaf(&l2, tss[2]);
     prev = save_leaf(&l2, &sblock, bstore);
 
@@ -1541,7 +1541,7 @@ void test_node_split_algorithm_lvl2(aku_Timestamp pivot, std::map<int, std::vect
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(new_root - root, num_new_nodes);
 
-    NBTreeSuperblock new_sblock(read_block(bstore, new_root));
+    IOVecSuperblock new_sblock(read_block(bstore, new_root));
     std::unique_ptr<RealValuedOperator> it = new_sblock.search(0, 100, bstore);
     auto actual = extract_timestamps(*it);
 
@@ -1622,7 +1622,7 @@ BOOST_AUTO_TEST_CASE(Test_node_split_algorithm_3) {
     test_node_split_algorithm_lvl2(30, tss, 3);
 }
 
-static LogicAddr append_inner_node(NBTreeSuperblock& root, NBTreeSuperblock& child, std::shared_ptr<BlockStore> bstore) {
+static LogicAddr append_inner_node(IOVecSuperblock& root, IOVecSuperblock& child, std::shared_ptr<BlockStore> bstore) {
     aku_Status status;
     LogicAddr child_addr;
     std::tie(status, child_addr) = child.commit(bstore);
@@ -1636,14 +1636,14 @@ static LogicAddr append_inner_node(NBTreeSuperblock& root, NBTreeSuperblock& chi
     return child_addr;
 }
 
-static void check_backrefs(NBTreeSuperblock& root, std::shared_ptr<BlockStore> bstore) {
+static void check_backrefs(IOVecSuperblock& root, std::shared_ptr<BlockStore> bstore) {
     // Get the children and check connections
     std::vector<SubtreeRef> refs;
     auto status = root.read_all(&refs);
     BOOST_REQUIRE(status == AKU_SUCCESS);
     LogicAddr prev_node_addr = EMPTY_ADDR;
     for (auto ref: refs) {
-        NBTreeSuperblock curr(read_block(bstore, ref.addr));
+        IOVecSuperblock curr(read_block(bstore, ref.addr));
         BOOST_REQUIRE_EQUAL(curr.get_prev_addr(), prev_node_addr);
         prev_node_addr = ref.addr;
     }
@@ -1674,25 +1674,25 @@ void test_node_split_algorithm_lvl3(aku_Timestamp pivot, std::map<int, std::vect
     aku_Status status;
     const aku_ParamId id = 42;
     LogicAddr prev = EMPTY_ADDR;
-    NBTreeSuperblock inner0(id, EMPTY_ADDR, 0, 2);
-    NBTreeSuperblock inner1(id, EMPTY_ADDR, 0, 1);
+    IOVecSuperblock inner0(id, EMPTY_ADDR, 0, 2);
+    IOVecSuperblock inner1(id, EMPTY_ADDR, 0, 1);
     // 0
-    NBTreeLeaf l0(id, prev, 0);
+    IOVecLeaf l0(id, prev, 0);
     fill_leaf(&l0, tss[0]);
     prev = save_leaf(&l0, &inner1, bstore);
     // 1
-    NBTreeLeaf l1(id, prev, 1);
+    IOVecLeaf l1(id, prev, 1);
     fill_leaf(&l1, tss[1]);
     prev = save_leaf(&l1, &inner1, bstore);
     // 2
-    NBTreeLeaf l2(id, prev, 2);
+    IOVecLeaf l2(id, prev, 2);
     fill_leaf(&l2, tss[2]);
     prev = save_leaf(&l2, &inner1, bstore);
     auto inner1_addr = append_inner_node(inner0, inner1, bstore);
 
-    NBTreeSuperblock inner2(id, inner1_addr, 1, 1);
+    IOVecSuperblock inner2(id, inner1_addr, 1, 1);
     // 3
-    NBTreeLeaf l3(id, EMPTY_ADDR, 0);
+    IOVecLeaf l3(id, EMPTY_ADDR, 0);
     fill_leaf(&l3, tss[3]);
     prev = save_leaf(&l3, &inner2, bstore);
 
@@ -1707,7 +1707,7 @@ void test_node_split_algorithm_lvl3(aku_Timestamp pivot, std::map<int, std::vect
     std::tie(status, new_inner0_addr, last_child) = inner0.split(bstore, pivot, true);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    NBTreeSuperblock new_sblock(read_block(bstore, new_inner0_addr));
+    IOVecSuperblock new_sblock(read_block(bstore, new_inner0_addr));
 
     // Compare scan results
     std::unique_ptr<RealValuedOperator> it = new_sblock.search(0, 100, bstore);
@@ -1946,7 +1946,7 @@ static std::tuple<int, int> count_nbtree_nodes(std::shared_ptr<BlockStore> bstor
             number_of_leaf_nodes++;
         } else {
             number_of_inner_nodes++;
-            NBTreeSuperblock sblock(read_block(bstore, addr));
+            IOVecSuperblock sblock(read_block(bstore, addr));
             std::vector<SubtreeRef> refs;
             auto status = sblock.read_all(&refs);
             BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
@@ -1976,10 +1976,10 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     const aku_ParamId id = 42;
     LogicAddr prev = EMPTY_ADDR;
-    NBTreeSuperblock sblock(id, EMPTY_ADDR, 0, 1);
+    IOVecSuperblock sblock(id, EMPTY_ADDR, 0, 1);
 
     for(auto kv: tss) {
-        NBTreeLeaf leaf(id, prev, static_cast<u16>(kv.first));
+        IOVecLeaf leaf(id, prev, static_cast<u16>(kv.first));
         fill_leaf(&leaf, kv.second);
         prev = save_leaf(&leaf, &sblock, bstore);
     }
@@ -1998,7 +1998,7 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_NE(new_root1 - root, 0);
 
-    NBTreeSuperblock new_sblock1(read_block(bstore, new_root1));
+    IOVecSuperblock new_sblock1(read_block(bstore, new_root1));
     std::unique_ptr<RealValuedOperator> it = new_sblock1.search(0, 100, bstore);
     auto actual = extract_timestamps(*it);
 
@@ -2016,7 +2016,7 @@ void test_node_split_algorithm_lvl2_split_twice(aku_Timestamp pivot1,
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_NE(new_root2 - new_root1, 0);
 
-    NBTreeSuperblock new_sblock2(read_block(bstore, new_root2));
+    IOVecSuperblock new_sblock2(read_block(bstore, new_root2));
     it = new_sblock2.search(0, 100, bstore);
     actual = extract_timestamps(*it);
 
@@ -2222,7 +2222,7 @@ BOOST_AUTO_TEST_CASE(Test_value_filter_7) {
 }
 
 void test_nbtreeleaf_filter_operator(aku_Timestamp begin, aku_Timestamp end) {
-    NBTreeLeaf leaf(42, EMPTY_ADDR, 0);
+    IOVecLeaf leaf(42, EMPTY_ADDR, 0);
     aku_Timestamp first_timestamp = 100;
     std::vector<double> xss;
     std::vector<double> tss;

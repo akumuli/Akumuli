@@ -879,6 +879,7 @@ public:
  * @return status
  */
 aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out);
+aku_Status init_subtree_from_leaf(const IOVecLeaf& leaf, SubtreeRef& out);
 
 /**
  * @brief Initialize SubtreeRef by reading subtree (addr field is not set)
@@ -887,6 +888,7 @@ aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out);
  * @return status
  */
 aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, SubtreeRef& backref);
+aku_Status init_subtree_from_subtree(const IOVecSuperblock& node, SubtreeRef& backref);
 
 }
 }  // namespaces
