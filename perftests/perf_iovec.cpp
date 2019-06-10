@@ -58,7 +58,8 @@ int main() {
     const int N = 1000000;
 
     std::cout << "NBTree[w,r]\tIOVec[w,r]" << std::endl;
-    double t[4];
+    const auto MDBL = std::numeric_limits<double>::max();
+    double t[4] = {MDBL, MDBL, MDBL, MDBL};
     for (int o = 0; o < 10; o++)
     {
         {
@@ -93,7 +94,7 @@ int main() {
                     leaf.reset(new NBTreeLeaf(42, EMPTY_ADDR, 0));
                 }
             }
-            t[0] = tm.elapsed();
+            t[0] = std::min(tm.elapsed(), t[0]);
 
             // Read back
             std::vector<aku_Timestamp> ts;
@@ -112,7 +113,7 @@ int main() {
                 }
             }
 
-            t[1] = tm.elapsed();
+            t[1] = std::min(tm.elapsed(), t[1]);
         }
         {
             std::unique_ptr<IOVecLeaf> leaf(new IOVecLeaf(42, EMPTY_ADDR, 0));
@@ -146,7 +147,7 @@ int main() {
                     leaf.reset(new IOVecLeaf(42, EMPTY_ADDR, 0));
                 }
             }
-            t[2] = tm.elapsed();
+            t[2] = std::min(tm.elapsed(), t[2]);
 
             // Read back
             std::vector<aku_Timestamp> ts;
@@ -165,14 +166,16 @@ int main() {
                 }
             }
 
-            t[3] = tm.elapsed();
+            t[3] = std::min(tm.elapsed(), t[3]);
         }
-        std::cout << t[0] << ", " << t[1] << "\t" << t[2] << ", " << t[3] << std::endl;
     }
+    std::cout << t[0] << ", " << t[1] << "\t" << t[2] << ", " << t[3] << std::endl;
 
     // Check superblock
 
-
+    for(int i = 0; i < 4; i++) {
+        t[i] = MDBL;
+    }
     std::cout << "SBlock[w,r]\tIOVec[w,r]" << std::endl;
     for (int o = 0; o < 10; o++)
     {
@@ -228,7 +231,7 @@ int main() {
                     inner.reset(new NBTreeSuperblock(42, EMPTY_ADDR, 0, 1));
                 }
             }
-            t[0] = tm.elapsed();
+            t[0] = std::min(tm.elapsed(), t[0]);
 
             // Read back
             std::vector<aku_Timestamp> ts;
@@ -247,7 +250,7 @@ int main() {
                 }
             }
 
-            t[1] = tm.elapsed();
+            t[1] = std::min(tm.elapsed(), t[1]);
         }
         {
             std::unique_ptr<IOVecSuperblock> inner(new IOVecSuperblock(42, EMPTY_ADDR, 0, 1));
@@ -301,7 +304,7 @@ int main() {
                     inner.reset(new IOVecSuperblock(42, EMPTY_ADDR, 0, 1));
                 }
             }
-            t[2] = tm.elapsed();
+            t[2] = std::min(tm.elapsed(), t[2]);
 
             // Read back
             std::vector<aku_Timestamp> ts;
@@ -320,9 +323,9 @@ int main() {
                 }
             }
 
-            t[3] = tm.elapsed();
+            t[3] = std::min(tm.elapsed(), t[3]);
         }
-        std::cout << t[0] << ", " << t[1] << "\t" << t[2] << ", " << t[3] << std::endl;
     }
+    std::cout << t[0] << ", " << t[1] << "\t" << t[2] << ", " << t[3] << std::endl;
     return 0;
 }
