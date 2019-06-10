@@ -169,5 +169,160 @@ int main() {
         }
         std::cout << t[0] << ", " << t[1] << "\t" << t[2] << ", " << t[3] << std::endl;
     }
+
+    // Check superblock
+
+
+    std::cout << "SBlock[w,r]\tIOVec[w,r]" << std::endl;
+    for (int o = 0; o < 10; o++)
+    {
+        {
+            std::unique_ptr<NBTreeSuperblock> inner(new NBTreeSuperblock(42, EMPTY_ADDR, 0, 1));
+            int leaf_append_cnt = 0;
+            LogicAddr last_addr = EMPTY_ADDR;
+            LogicAddr first_addr = EMPTY_ADDR;
+            auto bstore = BlockStoreBuilder::create_memstore([&](LogicAddr a) {
+                if (first_addr == EMPTY_ADDR) {
+                    first_addr = a;
+                }
+                leaf_append_cnt++;
+                last_addr = a;
+            });
+            Timer tm;
+            const auto btype = NBTreeBlockType::INNER;
+            SubtreeRef ref =  {
+                1003,           // count
+                42,             // id
+                400,            // begin
+                500,            // end
+                114,            // addr
+                start,          // min
+                341,            // min time
+                210.4,          // max
+                311,            // max time
+                21320.0,        // sum
+                4.4,            // first
+                4.1,            // last
+                btype,          // block type
+                1,              // level
+                4000,           // payload size
+                1,              // version
+                0,              // fanout index
+                0,              // checksum
+            };
+            for (int i = 0; i < N; i++) {
+                ref.min += inc;
+                ref.min *= factor;
+                auto status = inner->append(ref);
+                if (status == AKU_EOVERFLOW) {
+                    LogicAddr addr;
+                    std::tie(status, addr) = inner->commit(bstore);
+                    if (status != AKU_SUCCESS) {
+                        std::cout << "Failed to commit superblock" << std::endl;
+                        std::abort();
+                    }
+                    if (addr != last_addr) {
+                        std::cout << "Unexpected superblock address " << addr << " returned, " << last_addr << " expected" << std::endl;
+                        std::abort();
+                    }
+                    inner.reset(new NBTreeSuperblock(42, EMPTY_ADDR, 0, 1));
+                }
+            }
+            t[0] = tm.elapsed();
+
+            // Read back
+            std::vector<aku_Timestamp> ts;
+            std::vector<SubtreeRef> xs;
+            ts.reserve(5000);
+            xs.reserve(5000);
+
+            tm.restart();
+
+            for (LogicAddr addr = first_addr; addr < last_addr; addr++) {
+                NBTreeSuperblock rdleaf(addr, bstore);
+                auto status = rdleaf.read_all(&xs);
+                if(status != AKU_SUCCESS) {
+                    std::cout << "Failed to read block " << addr << std::endl;
+                    std::abort();
+                }
+            }
+
+            t[1] = tm.elapsed();
+        }
+        {
+            std::unique_ptr<IOVecSuperblock> inner(new IOVecSuperblock(42, EMPTY_ADDR, 0, 1));
+            int leaf_append_cnt = 0;
+            LogicAddr last_addr = EMPTY_ADDR;
+            LogicAddr first_addr = EMPTY_ADDR;
+            auto bstore = BlockStoreBuilder::create_memstore([&](LogicAddr a) {
+                if (first_addr == EMPTY_ADDR) {
+                    first_addr = a;
+                }
+                leaf_append_cnt++;
+                last_addr = a;
+            });
+            Timer tm;
+            const auto btype = NBTreeBlockType::INNER;
+            SubtreeRef ref =  {
+                1003,           // count
+                42,             // id
+                400,            // begin
+                500,            // end
+                114,            // addr
+                start,          // min
+                341,            // min time
+                210.4,          // max
+                311,            // max time
+                21320.0,        // sum
+                4.4,            // first
+                4.1,            // last
+                btype,          // block type
+                1,              // level
+                4000,           // payload size
+                1,              // version
+                0,              // fanout index
+                0,              // checksum
+            };
+            for (int i = 0; i < N; i++) {
+                ref.min += inc;
+                ref.min *= factor;
+                auto status = inner->append(ref);
+                if (status == AKU_EOVERFLOW) {
+                    LogicAddr addr;
+                    std::tie(status, addr) = inner->commit(bstore);
+                    if (status != AKU_SUCCESS) {
+                        std::cout << "Failed to commit superblock" << std::endl;
+                        std::abort();
+                    }
+                    if (addr != last_addr) {
+                        std::cout << "Unexpected superblock address " << addr << " returned, " << last_addr << " expected" << std::endl;
+                        std::abort();
+                    }
+                    inner.reset(new IOVecSuperblock(42, EMPTY_ADDR, 0, 1));
+                }
+            }
+            t[2] = tm.elapsed();
+
+            // Read back
+            std::vector<aku_Timestamp> ts;
+            std::vector<SubtreeRef> xs;
+            ts.reserve(5000);
+            xs.reserve(5000);
+
+            tm.restart();
+
+            for (LogicAddr addr = first_addr; addr < last_addr; addr++) {
+                IOVecSuperblock rdleaf(addr, bstore);
+                auto status = rdleaf.read_all(&xs);
+                if(status != AKU_SUCCESS) {
+                    std::cout << "Failed to read block " << addr << std::endl;
+                    std::abort();
+                }
+            }
+
+            t[3] = tm.elapsed();
+        }
+        std::cout << t[0] << ", " << t[1] << "\t" << t[2] << ", " << t[3] << std::endl;
+    }
     return 0;
 }
