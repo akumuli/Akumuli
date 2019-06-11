@@ -147,6 +147,25 @@ struct IOVecBlock {
 
     const u8* get_cdata(int component) const;
 
+    template<typename Header>
+    const Header* get_header() const {
+        static_assert(sizeof(Header) < 1024, "Header should be less than 1KB");
+        const u8* ptr = get_data(0);
+        return reinterpret_cast<const Header*>(ptr);
+    }
+
+    template<typename Header>
+    const Header* get_cheader() const {
+        return get_header<Header>();
+    }
+
+    template<typename Header>
+    Header* get_header() {
+        static_assert(sizeof(Header) < 1024, "Header should be less than 1KB");
+        u8* ptr = get_data(0);
+        return reinterpret_cast<Header*>(ptr);
+    }
+
     u8* get_data(int component);
 
     size_t get_size(int component) const;
