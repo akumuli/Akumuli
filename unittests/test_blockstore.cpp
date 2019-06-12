@@ -115,28 +115,29 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_0) {
     delete_blockstore();
     create_blockstore();
     auto bstore = open_blockstore();
-    std::shared_ptr<Block> block;
+    std::shared_ptr<IOVecBlock> block;
     aku_Status status;
     // Should be unreadable
-    std::tie(status, block) = bstore->read_block(0);
+    std::tie(status, block) = bstore->read_iovec_block(0);
     BOOST_REQUIRE_NE(status, AKU_SUCCESS);
 
     // Append first block
-    auto buffer = std::make_shared<Block>();
-    buffer->get_data()[0] = 1;
+    auto buffer = std::make_shared<IOVecBlock>();
+    buffer->add();
+    buffer->get_data(0)[0] = 1;
     LogicAddr addr;
-    std::tie(status, addr) = bstore->append_block(buffer);
+    std::tie(status, addr) = bstore->append_block(*buffer);
 
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     BOOST_REQUIRE_EQUAL(addr, 0);
 
     // Should be readable now
-    std::tie(status, block) = bstore->read_block(0);
+    std::tie(status, block) = bstore->read_iovec_block(0);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const u8* block_data = block->get_cdata();
-    size_t block_size = block->get_size();
+    const u8* block_data = block->get_cdata(0);
+    size_t block_size = block->get_size(0);
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);
     BOOST_REQUIRE_EQUAL(block_data[0], 1);
@@ -155,25 +156,26 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_1) {
     aku_Status status;
 
     for (int i = 0; i < 17; i++) {
-        auto buffer = std::make_shared<Block>();
-        buffer->get_data()[0] = static_cast<u8>(i);
-        std::tie(status, addr) = bstore->append_block(buffer);
+        auto buffer = std::make_shared<IOVecBlock>();
+        buffer->add();
+        buffer->get_data(0)[0] = static_cast<u8>(i);
+        std::tie(status, addr) = bstore->append_block(*buffer);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     }
     BOOST_REQUIRE_EQUAL(addr, (2ull << 32));
 
-    std::shared_ptr<Block> block;
+    std::shared_ptr<IOVecBlock> block;
 
     // Should be unreadable now
-    std::tie(status, block) = bstore->read_block(0);
+    std::tie(status, block) = bstore->read_iovec_block(0);
     BOOST_REQUIRE_EQUAL(status, AKU_EUNAVAILABLE);
 
     // Reada this block
-    std::tie(status, block) = bstore->read_block(2ull << 32);
+    std::tie(status, block) = bstore->read_iovec_block(2ull << 32);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const u8* block_data = block->get_cdata();
-    size_t block_size = block->get_size();
+    const u8* block_data = block->get_cdata(0);
+    size_t block_size = block->get_size(0);
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);
     BOOST_REQUIRE_EQUAL(block_data[0], 16);
@@ -185,27 +187,28 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_3) {
     delete_expandable_storage();
     create_expandable_storage();
     auto bstore = open_expandable_storage();
-    std::shared_ptr<Block> block;
+    std::shared_ptr<IOVecBlock> block;
     aku_Status status;
 
     // Should be clean
-    std::tie(status, block) = bstore->read_block(0);
+    std::tie(status, block) = bstore->read_iovec_block(0);
     BOOST_REQUIRE_NE(status, AKU_SUCCESS);
 
     // Append first block
-    auto buffer = std::make_shared<Block>();
-    buffer->get_data()[0] = 1;
+    auto buffer = std::make_shared<IOVecBlock>();
+    buffer->add();
+    buffer->get_data(0)[0] = 1;
     LogicAddr addr;
-    std::tie(status, addr) = bstore->append_block(buffer);
+    std::tie(status, addr) = bstore->append_block(*buffer);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
     BOOST_REQUIRE_EQUAL(addr, 0);
 
     // Should be readable now
-    std::tie(status, block) = bstore->read_block(0);
+    std::tie(status, block) = bstore->read_iovec_block(0);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const u8* block_data = block->get_cdata();
-    size_t block_size = block->get_size();
+    const u8* block_data = block->get_cdata(0);
+    size_t block_size = block->get_size(0);
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);
     BOOST_REQUIRE_EQUAL(block_data[0], 1);
@@ -220,25 +223,27 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_4) {
     create_expandable_storage();
     std::shared_ptr<VolumeRegistryMock> mock;
     auto bstore = open_expandable_storage(&mock);
-    std::shared_ptr<Block> block;
+    std::shared_ptr<IOVecBlock> block;
     aku_Status status;
     bool exist = boost::filesystem::exists(expected_path);
     BOOST_REQUIRE(!exist);
 
     for (u32 i = 0; i < CAPACITIES.at(0); i++) {
-        auto buffer = std::make_shared<Block>();
-        buffer->get_data()[0] = 1;
+        auto buffer = std::make_shared<IOVecBlock>();
+        buffer->add();
+        buffer->get_data(0)[0] = 1;
         LogicAddr addr;
-        std::tie(status, addr) = bstore->append_block(buffer);
+        std::tie(status, addr) = bstore->append_block(*buffer);
         BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
         BOOST_REQUIRE_EQUAL(addr, i);
         exist = boost::filesystem::exists(expected_path);
         BOOST_REQUIRE(!exist);
     }
-    auto buffer = std::make_shared<Block>();
-    buffer->get_data()[0] = 1;
+    auto buffer = std::make_shared<IOVecBlock>();
+    buffer->add();
+    buffer->get_data(0)[0] = 1;
     LogicAddr addr;
-    std::tie(status, addr) = bstore->append_block(buffer);
+    std::tie(status, addr) = bstore->append_block(*buffer);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
     std::string new_vol_path = mock->volumes.at(1).path;
@@ -249,11 +254,11 @@ BOOST_AUTO_TEST_CASE(Test_blockstore_4) {
     BOOST_REQUIRE_EQUAL(new_vol_path, std::string(expected_path));
 
     // Should be readable now
-    std::tie(status, block) = bstore->read_block(addr);
+    std::tie(status, block) = bstore->read_iovec_block(addr);
     BOOST_REQUIRE_EQUAL(status, AKU_SUCCESS);
 
-    const u8* block_data = block->get_cdata();
-    size_t    block_size = block->get_size();
+    const u8* block_data = block->get_cdata(0);
+    size_t    block_size = block->get_size(0);
 
     BOOST_REQUIRE_EQUAL(block_size, 4096);
     BOOST_REQUIRE_EQUAL(block_data[0], 1);

@@ -1776,7 +1776,7 @@ std::tuple<aku_Status, LogicAddr> IOVecLeaf::commit(std::shared_ptr<BlockStore> 
     subtree->fanout_index = fanout_index_;
     // Compute checksum
     subtree->checksum = bstore->checksum(*block_, sizeof(SubtreeRef), size);
-    return bstore->append_block(block_);
+    return bstore->append_block(*block_);
 }
 
 
@@ -2075,7 +2075,7 @@ std::tuple<aku_Status, LogicAddr> IOVecSuperblock::commit(std::shared_ptr<BlockS
     backref->version = AKUMULI_VERSION;
     // add checksum
     backref->checksum = bstore->checksum(block_->get_cdata(0) + sizeof(SubtreeRef), backref->payload_size);
-    return bstore->append_block(block_);
+    return bstore->append_block(*block_);
 }
 
 bool IOVecSuperblock::is_full() const {

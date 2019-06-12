@@ -100,55 +100,6 @@ BlockCache::PBlock BlockCache::loockup(LogicAddr addr) {
 }
 
 
-Block::Block(LogicAddr addr, std::vector<u8>&& data)
-    : data_(std::move(data))
-    , addr_(addr)
-    , zptr_(nullptr)
-{
-}
-
-Block::Block(LogicAddr addr, const u8* ptr)
-    : addr_(addr)
-    , zptr_(ptr)
-{
-}
-
-Block::Block()
-    : data_(static_cast<size_t>(AKU_BLOCK_SIZE), 0)
-    , addr_(EMPTY_ADDR)
-    , zptr_(nullptr)
-{
-}
-
-const u8* Block::get_data() const {
-    return zptr_ ? zptr_ : data_.data();
-}
-
-const u8* Block::get_cdata() const {
-    return zptr_ ? zptr_ : data_.data();
-}
-
-bool Block::is_readonly() const {
-    return zptr_ != nullptr || addr_ != EMPTY_ADDR;
-}
-
-u8* Block::get_data() {
-    assert(is_readonly() == false);
-    return data_.data();
-}
-
-size_t Block::get_size() const {
-    return zptr_ ? AKU_BLOCK_SIZE : data_.size();
-}
-
-LogicAddr Block::get_addr() const {
-    return addr_;
-}
-
-void Block::set_addr(LogicAddr addr) {
-    addr_ = addr;
-}
-
 
 
 FileStorage::FileStorage(std::shared_ptr<VolumeRegistry> meta)
@@ -264,42 +215,20 @@ static LogicAddr make_logic(u32 gen, BlockAddr addr) {
     return static_cast<u64>(gen) << 32 | addr;
 }
 
-std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<Block> data) {
+std::tuple<aku_Status, LogicAddr> FileStorage::append_block(IOVecBlock& data) {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     BlockAddr block_addr;
     aku_Status status;
-    std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data->get_data());
+    std::tie(status, block_addr) = volumes_[current_volume_]->append_block(&data);
     if (status == AKU_EOVERFLOW) {
       // transition to new/next volume
       handle_volume_transition();
-      std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data->get_data());
+      std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(&data);
       if (status != AKU_SUCCESS) {
         return std::make_tuple(status, 0ull);
       }
     }
-    data->set_addr(block_addr);
-    status = meta_->set_nblocks(current_volume_, block_addr + 1);
-    if (status != AKU_SUCCESS) {
-      AKU_PANIC("Invalid BlockStore state, " + StatusUtil::str(status));
-    }
-    dirty_[current_volume_]++;
-    return std::make_tuple(status, make_logic(current_gen_, block_addr));
-}
-
-std::tuple<aku_Status, LogicAddr> FileStorage::append_block(std::shared_ptr<IOVecBlock> data) {
-    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
-    BlockAddr block_addr;
-    aku_Status status;
-    std::tie(status, block_addr) = volumes_[current_volume_]->append_block(data.get());
-    if (status == AKU_EOVERFLOW) {
-      // transition to new/next volume
-      handle_volume_transition();
-      std::tie(status, block_addr) = volumes_.at(current_volume_)->append_block(data.get());
-      if (status != AKU_SUCCESS) {
-        return std::make_tuple(status, 0ull);
-      }
-    }
-    data->set_addr(block_addr);
+    data.set_addr(block_addr);
     status = meta_->set_nblocks(current_volume_, block_addr + 1);
     if (status != AKU_SUCCESS) {
       AKU_PANIC("Invalid BlockStore state, " + StatusUtil::str(status));
@@ -427,45 +356,7 @@ bool FixedSizeFileStorage::exists(LogicAddr addr) const {
     return actual_gen == gen && vol < nblocks;
 }
 
-std::tuple<aku_Status, std::shared_ptr<Block>> FixedSizeFileStorage::read_block(LogicAddr addr) {
-    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
-    aku_Status status;
-    auto gen = extract_gen(addr);
-    auto vol = extract_vol(addr);
-    auto volix = gen % static_cast<u32>(volumes_.size());
-    u32 actual_gen;
-    u32 nblocks;
-    std::tie(status, actual_gen) = meta_->get_generation(volix);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
-    }
-    std::tie(status, nblocks) = meta_->get_nblocks(volix);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
-    }
-    if (actual_gen != gen || vol >= nblocks) {
-        return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
-    }
-    // Try to use zero-copy if possible
-    const u8* mptr;
-    std::tie(status, mptr) = volumes_[volix]->read_block_zero_copy(vol);
-    if (status == AKU_SUCCESS) {
-        std::shared_ptr<Block> zblock = std::make_shared<Block>(addr, mptr);
-        return std::make_tuple(status, std::move(zblock));
-    } else if (status == AKU_EUNAVAILABLE) {
-        // Fallback to copying if not possible
-        std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
-        status = volumes_[volix]->read_block(vol, dest.data());
-        if (status != AKU_SUCCESS) {
-            return std::make_tuple(status, std::unique_ptr<Block>());
-        }
-        auto block = std::make_shared<Block>(addr, std::move(dest));
-        return std::make_tuple(status, std::move(block));
-    }
-    return std::make_tuple(status, std::unique_ptr<Block>());
-}
-
-std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> FixedSizeFileStorage::read_iovec_block(LogicAddr addr) {
+std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> FixedSizeFileStorage::read_iovec_block(LogicAddr addr) {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     aku_Status status;
     auto gen = extract_gen(addr);
@@ -529,44 +420,7 @@ bool ExpandableFileStorage::exists(LogicAddr addr) const {
     return actual_gen == gen && vol < nblocks;
 }
 
-std::tuple<aku_Status, std::shared_ptr<Block>> ExpandableFileStorage::read_block(LogicAddr addr) {
-    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
-    aku_Status status;
-    auto gen = extract_gen(addr);
-    auto vol = extract_vol(addr);
-    u32 actual_gen;
-    u32 nblocks;
-    std::tie(status, actual_gen) = meta_->get_generation(gen);
-    if (status != AKU_SUCCESS) {
-      return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
-    }
-    std::tie(status, nblocks) = meta_->get_nblocks(gen);
-    if (status != AKU_SUCCESS) {
-        return std::make_tuple(AKU_EBAD_ARG, std::unique_ptr<Block>());
-    }
-    if (actual_gen != gen || vol >= nblocks) {
-      return std::make_tuple(AKU_EUNAVAILABLE, std::unique_ptr<Block>());
-    }
-    // Try to use zero-copy if possible
-    const u8* mptr;
-    std::tie(status, mptr) = volumes_[gen]->read_block_zero_copy(vol);
-    if (status == AKU_SUCCESS) {
-        std::shared_ptr<Block> zblock = std::make_shared<Block>(addr, mptr);
-        return std::make_tuple(status, std::move(zblock));
-    } else if (status == AKU_EUNAVAILABLE) {
-        // Fallback to copying if not possible
-        std::vector<u8> dest(AKU_BLOCK_SIZE, 0);
-        status = volumes_[gen]->read_block(vol, dest.data());
-        if (status != AKU_SUCCESS) {
-            return std::make_tuple(status, std::unique_ptr<Block>());
-        }
-        auto block = std::make_shared<Block>(addr, std::move(dest));
-        return std::make_tuple(status, std::move(block));
-    }
-    return std::make_tuple(status, std::unique_ptr<Block>());
-}
-
-std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> ExpandableFileStorage::read_iovec_block(LogicAddr addr) {
+std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> ExpandableFileStorage::read_iovec_block(LogicAddr addr) {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     aku_Status status;
     auto gen = extract_gen(addr);
@@ -676,30 +530,7 @@ u32 MemStore::checksum(const IOVecBlock& block, size_t offset , size_t size) con
     return crc32;
 }
 
-std::tuple<aku_Status, std::shared_ptr<Block>> MemStore::read_block(LogicAddr addr) {
-    addr -= MEMSTORE_BASE;
-    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
-    std::shared_ptr<Block> block;
-    u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
-    if (addr < removed_pos_) {
-        return std::make_tuple(AKU_EUNAVAILABLE, block);
-    }
-    if (buffer_.size() < (offset + AKU_BLOCK_SIZE)) {
-        return std::make_tuple(AKU_EBAD_ARG, block);
-    }
-    std::vector<u8> data;
-    data.reserve(AKU_BLOCK_SIZE);
-    auto begin = buffer_.begin() + offset;
-    auto end = begin + AKU_BLOCK_SIZE;
-    std::copy(begin, end, std::back_inserter(data));
-    block.reset(new Block(addr + MEMSTORE_BASE, std::move(data)));
-    if (read_callback_) {
-        read_callback_(addr);
-    }
-    return std::make_tuple(AKU_SUCCESS, block);
-}
-
-std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> MemStore::read_iovec_block(LogicAddr addr) {
+std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> MemStore::read_iovec_block(LogicAddr addr) {
     addr -= MEMSTORE_BASE;
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     u32 offset = static_cast<u32>(AKU_BLOCK_SIZE * addr);
@@ -722,24 +553,11 @@ std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> MemStore::read_iovec_block(L
     return std::make_tuple(AKU_SUCCESS, std::move(block));
 }
 
-std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<Block> data) {
-    std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
-    assert(data->get_size() == AKU_BLOCK_SIZE);
-    std::copy(data->get_data(), data->get_data() + AKU_BLOCK_SIZE, std::back_inserter(buffer_));
-    if (append_callback_) {
-        append_callback_(write_pos_ + MEMSTORE_BASE);
-    }
-    auto addr = write_pos_++;
-    addr += MEMSTORE_BASE;
-    data->set_addr(addr);
-    return std::make_tuple(AKU_SUCCESS, addr);
-}
-
-std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<IOVecBlock> data) {
+std::tuple<aku_Status, LogicAddr> MemStore::append_block(IOVecBlock &data) {
     std::lock_guard<std::mutex> guard(lock_); AKU_UNUSED(guard);
     for (int i = 0; i < IOVecBlock::NCOMPONENTS; i++) {
-        if (data->get_size(i) != 0) {
-            const u8* p = data->get_cdata(i);
+        if (data.get_size(i) != 0) {
+            const u8* p = data.get_cdata(i);
             std::copy(p, p + IOVecBlock::COMPONENT_SIZE, std::back_inserter(buffer_));
         } else {
             std::fill_n(std::back_inserter(buffer_), IOVecBlock::COMPONENT_SIZE, 0);
@@ -750,7 +568,7 @@ std::tuple<aku_Status, LogicAddr> MemStore::append_block(std::shared_ptr<IOVecBl
     }
     auto addr = write_pos_++;
     addr += MEMSTORE_BASE;
-    data->set_addr(addr);
+    data.set_addr(addr);
     return std::make_tuple(AKU_SUCCESS, addr);
 }
 
