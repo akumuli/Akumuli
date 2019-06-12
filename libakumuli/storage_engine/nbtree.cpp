@@ -107,12 +107,12 @@ static std::string to_string(const SubtreeRef& ref) {
 }
 
 
-static std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_and_check(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
+static std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> read_and_check(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
     aku_Status status;
-    std::shared_ptr<IOVecBlock> block;
+    std::unique_ptr<IOVecBlock> block;
     std::tie(status, block) = bstore->read_iovec_block(curr);
     if (status != AKU_SUCCESS) {
-        return std::tie(status, block);
+        return std::make_tuple(status, std::move(block));
     }
     if (block->get_size(0) == AKU_BLOCK_SIZE) {
         // This check only makes sense when reading data back. In this case IOVecBlock will
@@ -127,14 +127,14 @@ static std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_and_check(std::s
             status = AKU_EBAD_DATA;
         }
     }
-    return std::tie(status, block);
+    return std::make_tuple(status, std::move(block));
 }
 
 
 //! Read block from blockstoroe with all the checks. Panic on error!
-static std::shared_ptr<IOVecBlock> read_iovec_block_from_bstore(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
+static std::unique_ptr<IOVecBlock> read_iovec_block_from_bstore(std::shared_ptr<BlockStore> bstore, LogicAddr curr) {
     aku_Status status;
-    std::shared_ptr<IOVecBlock> block;
+    std::unique_ptr<IOVecBlock> block;
     std::tie(status, block) = bstore->read_iovec_block(curr);
     if (status != AKU_SUCCESS) {
         Logger::msg(AKU_LOG_ERROR, "Can't read block @" + std::to_string(curr) + ", error: " + StatusUtil::str(status));
@@ -540,12 +540,12 @@ struct NBTreeSBlockIteratorBase : SeriesOperator<TVal> {
 
     aku_Status init() {
         aku_Status status;
-        std::shared_ptr<IOVecBlock> block;
+        std::unique_ptr<IOVecBlock> block;
         std::tie(status, block) = read_and_check(bstore_, addr_);
         if (status != AKU_SUCCESS) {
             return status;
         }
-        IOVecSuperblock current(block);
+        IOVecSuperblock current(std::move(block));
         status = current.read_all(&refs_);
         refs_pos_ = begin_ < end_ ? 0 : static_cast<i32>(refs_.size()) - 1;
         return status;
@@ -659,7 +659,7 @@ struct NBTreeSBlockIterator : NBTreeSBlockIteratorBase<double> {
     virtual std::tuple<aku_Status, TIter> make_leaf_iterator(const SubtreeRef &ref) {
         assert(ref.type == NBTreeBlockType::LEAF);
         aku_Status status;
-        std::shared_ptr<IOVecBlock> block;
+        std::unique_ptr<IOVecBlock> block;
         std::tie(status, block) = read_and_check(bstore_, ref.addr);
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, std::unique_ptr<RealValuedOperator>());
@@ -667,7 +667,7 @@ struct NBTreeSBlockIterator : NBTreeSBlockIteratorBase<double> {
         auto blockref = block->get_cheader<SubtreeRef>();
         assert(blockref->type == ref.type);
         AKU_UNUSED(blockref);
-        IOVecLeaf leaf(block);
+        IOVecLeaf leaf(std::move(block));
         std::unique_ptr<RealValuedOperator> result;
         result.reset(new NBTreeLeafIterator(begin_, end_, leaf));
         return std::make_tuple(AKU_SUCCESS, std::move(result));
@@ -761,7 +761,7 @@ struct NBTreeSBlockFilter : NBTreeSBlockIteratorBase<double> {
     virtual std::tuple<aku_Status, TIter> make_leaf_iterator(const SubtreeRef &ref) {
         assert(ref.type == NBTreeBlockType::LEAF);
         aku_Status status;
-        std::shared_ptr<IOVecBlock> block;
+        std::unique_ptr<IOVecBlock> block;
         std::tie(status, block) = read_and_check(bstore_, ref.addr);
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, std::unique_ptr<RealValuedOperator>());
@@ -772,13 +772,13 @@ struct NBTreeSBlockFilter : NBTreeSBlockIteratorBase<double> {
         switch (filter_.get_overlap(*blockref)) {
         case RangeOverlap::FULL_OVERLAP: {
             // Return normal leaf iterator because it's faster
-            IOVecLeaf leaf(block);
+            IOVecLeaf leaf(std::move(block));
             result.reset(new NBTreeLeafIterator(begin_, end_, leaf));
             break;
         }
         case RangeOverlap::PARTIAL_OVERLAP: {
             // Return filtering leaf operator
-            IOVecLeaf leaf(block);
+            IOVecLeaf leaf(std::move(block));
             result.reset(new NBTreeLeafFilter(begin_, end_, filter_, leaf));
             break;
         }
@@ -1035,13 +1035,13 @@ std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregat
         return std::make_tuple(AKU_EUNAVAILABLE, std::move(empty));
     }
     aku_Status status;
-    std::shared_ptr<IOVecBlock> block;
+    std::unique_ptr<IOVecBlock> block;
     std::tie(status, block) = read_and_check(bstore_, ref.addr);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, std::unique_ptr<AggregateOperator>());
     }
     leftmost_leaf_found_ = true;
-    IOVecLeaf leaf(block);
+    IOVecLeaf leaf(std::move(block));
     std::unique_ptr<AggregateOperator> result;
     result.reset(new NBTreeLeafAggregator(begin_, end_, leaf));
     return std::make_tuple(AKU_SUCCESS, std::move(result));
@@ -1395,12 +1395,12 @@ std::tuple<aku_Status, size_t> NBTreeSBlockGroupAggregator::read(aku_Timestamp *
 
 std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> NBTreeSBlockGroupAggregator::make_leaf_iterator(SubtreeRef const& ref) {
     aku_Status status;
-    std::shared_ptr<IOVecBlock> block;
+    std::unique_ptr<IOVecBlock> block;
     std::tie(status, block) = read_and_check(bstore_, ref.addr);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, std::unique_ptr<AggregateOperator>());
     }
-    IOVecLeaf leaf(block);
+    IOVecLeaf leaf(std::move(block));
     std::unique_ptr<AggregateOperator> result;
     result.reset(new NBTreeLeafGroupAggregator(begin_, end_, step_, leaf));
     return std::make_tuple(AKU_SUCCESS, std::move(result));
@@ -1557,7 +1557,7 @@ std::tuple<aku_Status, size_t> NBTreeSBlockCandlesticsIter::read(aku_Timestamp *
 
 IOVecLeaf::IOVecLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index)
     : prev_(prev)
-    , block_(std::make_shared<IOVecBlock>())
+    , block_(new IOVecBlock())
     , writer_(block_.get())
     , fanout_index_(fanout_index)
 {
@@ -1595,28 +1595,27 @@ IOVecLeaf::IOVecLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr)
 {
 }
 
-IOVecLeaf::IOVecLeaf(std::shared_ptr<IOVecBlock> block)
+IOVecLeaf::IOVecLeaf(std::unique_ptr<IOVecBlock> block)
     : prev_(EMPTY_ADDR)
-    , block_(block)
+    , block_(std::move(block))
 {
     const SubtreeRef* subtree = block_->get_cheader<SubtreeRef>();
     prev_ = subtree->addr;
     fanout_index_ = subtree->fanout_index;
 }
 
-static std::shared_ptr<IOVecBlock> clone(std::shared_ptr<IOVecBlock> block) {
-    auto res = std::make_shared<IOVecBlock>();
-    // TODO: fixme
-    throw "Not implemented";
+static std::unique_ptr<IOVecBlock> clone(const std::unique_ptr<IOVecBlock>& block) {
+    std::unique_ptr<IOVecBlock> res(new IOVecBlock());
+    res->copy_from(*block);
     return res;
 }
 
-static aku_ParamId getid(std::shared_ptr<IOVecBlock> const& block) {
+static aku_ParamId getid(std::unique_ptr<IOVecBlock> const& block) {
     auto ptr = block->get_header<SubtreeRef>();
     return ptr->id;
 }
 
-IOVecLeaf::IOVecLeaf(std::shared_ptr<IOVecBlock> block, IOVecLeaf::CloneTag)
+IOVecLeaf::IOVecLeaf(std::unique_ptr<IOVecBlock> block, IOVecLeaf::CloneTag)
     : prev_(EMPTY_ADDR)
     , block_(clone(block))
     , writer_(block_.get())
@@ -1935,7 +1934,7 @@ std::tuple<aku_Status, LogicAddr> IOVecLeaf::split(std::shared_ptr<BlockStore> b
 // /////////////// //
 
 IOVecSuperblock::IOVecSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl)
-    : block_(std::make_shared<IOVecBlock>())
+    : block_(new IOVecBlock())
     , id_(id)
     , write_pos_(0)
     , fanout_index_(fanout)
@@ -1949,12 +1948,12 @@ IOVecSuperblock::IOVecSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16
     assert(prev_ != 0);
 }
 
-IOVecSuperblock::IOVecSuperblock(std::shared_ptr<IOVecBlock> block)
-    : block_(block)
+IOVecSuperblock::IOVecSuperblock(std::unique_ptr<IOVecBlock> block)
+    : block_(std::move(block))
     , immutable_(true)
 {
     // Use zero-copy here.
-    SubtreeRef const* ref = block->get_cheader<SubtreeRef>();
+    SubtreeRef const* ref = block_->get_cheader<SubtreeRef>();
     assert(ref->type == NBTreeBlockType::INNER);
     id_ = ref->id;
     fanout_index_ = ref->fanout_index;
@@ -1970,10 +1969,10 @@ IOVecSuperblock::IOVecSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bst
 }
 
 IOVecSuperblock::IOVecSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last)
-    : block_(std::make_shared<IOVecBlock>())
+    : block_(new IOVecBlock())
     , immutable_(false)
 {
-    std::shared_ptr<IOVecBlock> block = read_iovec_block_from_bstore(bstore, addr);
+    std::unique_ptr<IOVecBlock> block = read_iovec_block_from_bstore(bstore, addr);
     SubtreeRef const* ref = block->get_cheader<SubtreeRef>();
     assert(ref->type == NBTreeBlockType::INNER);
     id_ = ref->id;
@@ -2194,7 +2193,7 @@ std::tuple<aku_Status, LogicAddr> IOVecSuperblock::split_into(std::shared_ptr<Bl
                 root->append(refs[j]);
                 current_fanout++;
             }
-            std::shared_ptr<IOVecBlock> block;
+            std::unique_ptr<IOVecBlock> block;
             std::tie(status, block) = read_and_check(bstore, refs[i].addr);
             if (status != AKU_SUCCESS) {
                 return std::make_tuple(status, EMPTY_ADDR);
@@ -2205,14 +2204,14 @@ std::tuple<aku_Status, LogicAddr> IOVecSuperblock::split_into(std::shared_ptr<Bl
             assert(refsi->begin == refs[i].begin);
             AKU_UNUSED(refsi);
             if (refs[i].type == NBTreeBlockType::INNER) {
-                IOVecSuperblock sblock(block);
+                IOVecSuperblock sblock(std::move(block));
                 LogicAddr ignored;
                 std::tie(status, new_ith_child_addr, ignored) = sblock.split(bstore, pivot, false);
                 if (status != AKU_SUCCESS) {
                     return std::make_tuple(status, EMPTY_ADDR);
                 }
             } else {
-                IOVecLeaf oldleaf(block);
+                IOVecLeaf oldleaf(std::move(block));
                 if ((refs.size() - AKU_NBTREE_FANOUT) > 1) {
                     // Split in-place
                     std::tie(status, new_ith_child_addr) = oldleaf.split_into(bstore, pivot, preserve_horizontal_links, &current_fanout, root);
@@ -2230,7 +2229,7 @@ std::tuple<aku_Status, LogicAddr> IOVecSuperblock::split_into(std::shared_ptr<Bl
             if (new_ith_child_addr != EMPTY_ADDR) {
                 SubtreeRef newref;
                 auto block = read_iovec_block_from_bstore(bstore, new_ith_child_addr);
-                IOVecSuperblock child(block);
+                IOVecSuperblock child(std::move(block));
                 status = init_subtree_from_subtree(child, newref);
                 if (status != AKU_SUCCESS) {
                     return std::make_tuple(status, EMPTY_ADDR);
@@ -2268,9 +2267,9 @@ std::tuple<aku_Status, LogicAddr> IOVecSuperblock::split_into(std::shared_ptr<Bl
                             return std::make_tuple(status, EMPTY_ADDR);
                         }
                     } else {
-                        std::shared_ptr<IOVecBlock> child_block;
+                        std::unique_ptr<IOVecBlock> child_block;
                         std::tie(status, child_block) = read_and_check(bstore, refs[j].addr);
-                        IOVecLeaf cloned_child(child_block, IOVecLeaf::CloneTag());
+                        IOVecLeaf cloned_child(std::move(child_block), IOVecLeaf::CloneTag());
                         cloned_child.set_prev_addr(last_child_addr);
                         cloned_child.set_node_fanout(current_fanout);
                         current_fanout++;
@@ -2353,7 +2352,7 @@ struct NBTreeLeafExtent : NBTreeExtent {
         if (last_ != EMPTY_ADDR) {
             // Load previous node and calculate fanout.
             aku_Status status;
-            std::shared_ptr<IOVecBlock> block;
+            std::unique_ptr<IOVecBlock> block;
             std::tie(status, block) = read_and_check(bstore_, last_);
             if (status == AKU_EUNAVAILABLE) {
                 // Can't read previous node (retention)
@@ -2407,12 +2406,12 @@ struct NBTreeLeafExtent : NBTreeExtent {
 
     aku_Status get_prev_subtreeref(SubtreeRef &payload) {
         aku_Status status = AKU_SUCCESS;
-        std::shared_ptr<IOVecBlock> block;
+        std::unique_ptr<IOVecBlock> block;
         std::tie(status, block) = read_and_check(bstore_, last_);
         if (status != AKU_SUCCESS) {
             return status;
         }
-        IOVecLeaf leaf(block);
+        IOVecLeaf leaf(std::move(block));
         status = init_subtree_from_leaf(leaf, payload);
         payload.addr = last_;
         return status;
@@ -2658,7 +2657,7 @@ std::tuple<bool, LogicAddr> NBTreeLeafExtent::split(aku_Timestamp pivot) {
         return std::make_tuple(false, EMPTY_ADDR);
     }
     auto block = read_iovec_block_from_bstore(bstore_, addr);
-    IOVecSuperblock sblock(block);
+    IOVecSuperblock sblock(std::move(block));
     // Gather stats and send them to upper-level node
     SubtreeRef payload = INIT_SUBTREE_REF;
     status = init_subtree_from_subtree(sblock, payload);
@@ -2727,7 +2726,7 @@ struct NBTreeSBlockExtent : NBTreeExtent {
             // `addr` is not empty. Node should be restored from
             // block-store.
             aku_Status status;
-            std::shared_ptr<IOVecBlock> block;
+            std::unique_ptr<IOVecBlock> block;
             std::tie(status, block) = read_and_check(bstore_, addr);
             if (status  == AKU_EUNAVAILABLE) {
                 addr = EMPTY_ADDR;
@@ -2868,7 +2867,7 @@ void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::
         switch(action) {
         case Action::DUMP_NODE: {
             aku_Status status;
-            std::shared_ptr<IOVecBlock> block;
+            std::unique_ptr<IOVecBlock> block;
             std::tie(status, block) = bstore_->read_iovec_block(addr);
             if (status != AKU_SUCCESS) {
                 stream << tag("addr") << addr << "</addr>\n";
@@ -2878,12 +2877,12 @@ void NBTreeSBlockExtent::debug_dump(std::ostream& stream, int base_indent, std::
             auto subtreeref = block->get_cheader<SubtreeRef>();
             if (subtreeref->type == NBTreeBlockType::LEAF) {
                 // leaf node
-                IOVecLeaf leaf(block);
+                IOVecLeaf leaf(std::move(block));
                 SubtreeRef const* ref = leaf.get_leafmeta();
                 dump_subtree_ref(stream, ref, leaf.get_prev_addr(), indent, leaf.get_addr(), tsformat, mask);
             } else {
                 // superblock
-                IOVecSuperblock sblock(block);
+                IOVecSuperblock sblock(std::move(block));
                 SubtreeRef const* ref = sblock.get_sblockmeta();
                 dump_subtree_ref(stream, ref, sblock.get_prev_addr(), indent, sblock.get_addr(), tsformat, mask);
                 std::vector<SubtreeRef> children;
@@ -3059,7 +3058,7 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore,
             }
         }
         // Try to read block and check stats
-        std::shared_ptr<IOVecBlock> block;
+        std::unique_ptr<IOVecBlock> block;
         std::tie(status, block) = read_and_check(bstore, refs[i].addr);
         if (status == AKU_EUNAVAILABLE) {
             // block was deleted due to retention.
@@ -3068,14 +3067,14 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore,
             SubtreeRef out = INIT_SUBTREE_REF;
             const SubtreeRef* iref = block->get_cheader<SubtreeRef>();
             if (iref->type == NBTreeBlockType::LEAF) {
-                IOVecLeaf leaf(block);
+                IOVecLeaf leaf(std::move(block));
                 status = init_subtree_from_leaf(leaf, out);
                 if (status != AKU_SUCCESS) {
                     AKU_PANIC("Can't summarize leaf node at " + std::to_string(refs[i].addr) + " error: "
                                                               + StatusUtil::str(status));
                 }
             } else {
-                IOVecSuperblock superblock(block);
+                IOVecSuperblock superblock(std::move(block));
                 status = init_subtree_from_subtree(superblock, out);
                 if (status != AKU_SUCCESS) {
                     AKU_PANIC("Can't summarize inner node at " + std::to_string(refs[i].addr) + " error: "
@@ -3134,7 +3133,7 @@ static void check_superblock_consistency(std::shared_ptr<BlockStore> bstore,
 
     // Recur
     for (auto addr: nodes2follow) {
-        std::shared_ptr<IOVecBlock> block;
+        std::unique_ptr<IOVecBlock> block;
         std::tie(status, block) = read_and_check(bstore, addr);
         const SubtreeRef* iref = block->get_cheader<SubtreeRef>();
         if (iref->type == NBTreeBlockType::INNER) {
@@ -3303,7 +3302,7 @@ void NBTreeExtentsList::check_rescue_points(u32 i) const {
     IOVecSuperblock sblock(id_, EMPTY_ADDR, 0, 0);
     std::vector<SubtreeRef> refs;
     while(addr != EMPTY_ADDR) {
-        std::shared_ptr<IOVecBlock> block;
+        std::unique_ptr<IOVecBlock> block;
         std::tie(status, block) = read_and_check(bstore_, addr);
         if (status == AKU_EUNAVAILABLE) {
             // Block removed due to retention. Can't actually check anything.
@@ -3364,7 +3363,7 @@ std::tuple<aku_Status, LogicAddr> NBTreeExtentsList::_split(aku_Timestamp pivot)
     bool parent_saved = false;
     std::tie(parent_saved, paddr) = extents_.at(extent_index)->split(pivot);
     if (paddr != EMPTY_ADDR) {
-        std::shared_ptr<IOVecBlock> rblock;
+        std::unique_ptr<IOVecBlock> rblock;
         std::tie(status, rblock) = read_and_check(bstore_, paddr);
         if (status != AKU_SUCCESS) {
             Logger::msg(AKU_LOG_ERROR, "Can't read @" + std::to_string(paddr) + ", error: " + StatusUtil::str(status));
@@ -3495,7 +3494,7 @@ void NBTreeExtentsList::open() {
 
         // Read old leaf node. Add single element to the root.
         LogicAddr addr = rescue_points_.front();
-        std::shared_ptr<IOVecBlock> leaf_block;
+        std::unique_ptr<IOVecBlock> leaf_block;
         aku_Status status;
         std::tie(status, leaf_block) = read_and_check(bstore_, addr);
         if (status != AKU_SUCCESS) {
@@ -3506,7 +3505,7 @@ void NBTreeExtentsList::open() {
             initialized_ = true;
             return;
         }
-        IOVecLeaf leaf(leaf_block);  // fully loaded leaf
+        IOVecLeaf leaf(std::move(leaf_block));  // fully loaded leaf
         SubtreeRef sref = INIT_SUBTREE_REF;
         status = init_subtree_from_leaf(leaf, sref);
         if (status != AKU_SUCCESS) {
@@ -3633,7 +3632,7 @@ void NBTreeExtentsList::repair() {
             continue;
         }
         aku_Status status;
-        std::shared_ptr<IOVecBlock> block;
+        std::unique_ptr<IOVecBlock> block;
         std::tie(status, block) = read_and_check(bstore_, curr);
         if (status != AKU_SUCCESS) {
             // Stop collecting data and force building of the current extent.
@@ -3643,7 +3642,7 @@ void NBTreeExtentsList::repair() {
         }
         const SubtreeRef* curr_pref = block->get_cheader<SubtreeRef>();
         if (curr_pref->type == NBTreeBlockType::LEAF) {
-            IOVecLeaf leaf(block);
+            IOVecLeaf leaf(std::move(block));
             SubtreeRef ref = INIT_SUBTREE_REF;
             status = init_subtree_from_leaf(leaf, ref);
             if (status != AKU_SUCCESS) {
@@ -3655,7 +3654,7 @@ void NBTreeExtentsList::repair() {
             refs.push_back(ref);
             stack.push(leaf.get_prev_addr());  // get_prev_addr() can return EMPTY_ADDR
         } else {
-            IOVecSuperblock sblock(block);
+            IOVecSuperblock sblock(std::move(block));
             SubtreeRef ref = INIT_SUBTREE_REF;
             status = init_subtree_from_subtree(sblock, ref);
             if (status != AKU_SUCCESS) {
@@ -3871,7 +3870,7 @@ NBTreeExtentsList::RepairStatus NBTreeExtentsList::repair_status(std::vector<Log
 }
 
 
-static NBTreeBlockType _dbg_get_block_type(std::shared_ptr<IOVecBlock> block) {
+static NBTreeBlockType _dbg_get_block_type(const std::unique_ptr<IOVecBlock>& block) {
     auto ref = block->get_cheader<SubtreeRef>();
     return ref->level == 0 ? NBTreeBlockType::LEAF : NBTreeBlockType::INNER;
 }
@@ -3883,14 +3882,14 @@ void NBTreeExtentsList::debug_print(LogicAddr root, std::shared_ptr<BlockStore> 
         return;
     }
     aku_Status status;
-    std::shared_ptr<IOVecBlock> block;
+    std::unique_ptr<IOVecBlock> block;
     std::tie(status, block) = read_and_check(bstore, root);
     if (status != AKU_SUCCESS) {
         std::cout << pad << "ERROR: Can't read block at " << root << " " << StatusUtil::str(status) << std::endl;
     }
     auto type = _dbg_get_block_type(block);
     if (type == NBTreeBlockType::LEAF) {
-        IOVecLeaf leaf(block);
+        IOVecLeaf leaf(std::move(block));
         std::vector<aku_Timestamp> ts;
         std::vector<double> xs;
         status = leaf.read_all(&ts, &xs);

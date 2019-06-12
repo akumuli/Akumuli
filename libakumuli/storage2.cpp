@@ -900,7 +900,7 @@ void dump_tree(std::ostream &stream,
         };
 
         if (type == StackItemType::NORMAL || type == StackItemType::RECOVERY) {
-            std::shared_ptr<IOVecBlock> block;
+            std::unique_ptr<IOVecBlock> block;
             aku_Status status;
             std::tie(status, block) = bstore->read_iovec_block(curr);
             if (status != AKU_SUCCESS) {
@@ -911,7 +911,7 @@ void dump_tree(std::ostream &stream,
             auto subtreeref = block->get_cheader<SubtreeRef>();
             if (subtreeref->type == NBTreeBlockType::LEAF) {
                 // Dump leaf node's content
-                IOVecLeaf leaf(block);
+                IOVecLeaf leaf(std::move(block));
                 SubtreeRef const* ref = leaf.get_leafmeta();
                 stream << _tag("type")         << "Leaf"                       << "</type>\n";
                 stream << _tag("addr")         << afmt(curr)                   << "</addr>\n";
@@ -945,14 +945,14 @@ void dump_tree(std::ostream &stream,
                             // Block was deleted but it should be on the stack anyway
                             break;
                         }
-                        IOVecLeaf lnext(block);
+                        IOVecLeaf lnext(std::move(block));
                         prev = lnext.get_prev_addr();
                     }
                     stack.push(std::make_tuple(EMPTY_ADDR, indent, StackItemType::OPEN_FANOUT));
                 }
             } else {
                 // Dump inner node's content and children
-                IOVecSuperblock sblock(block);
+                IOVecSuperblock sblock(std::move(block));
                 SubtreeRef const* ref = sblock.get_sblockmeta();
                 stream << _tag("addr")         << afmt(curr)                   << "</addr>\n";
                 stream << _tag("type")         << "Superblock"                 << "</type>\n";
@@ -986,7 +986,7 @@ void dump_tree(std::ostream &stream,
                             // Block was deleted but it should be on the stack anyway
                             break;
                         }
-                        IOVecSuperblock sbnext(block);
+                        IOVecSuperblock sbnext(std::move(block));
                         prev = sbnext.get_prev_addr();
                     }
                     stack.push(std::make_tuple(EMPTY_ADDR, indent, StackItemType::OPEN_FANOUT));

@@ -113,7 +113,7 @@ class IOVecLeaf {
     //! Root address
     LogicAddr prev_;
     //! Buffer for pending updates
-    std::shared_ptr<IOVecBlock> block_;
+    std::unique_ptr<IOVecBlock> block_;
     //! DataBlockWriter for pending `append` operations.
     IOVecBlockWriter<IOVecBlock> writer_;
     //! Fanout index
@@ -142,13 +142,13 @@ public:
       * @param load Load method.
       * @note This c-tor panics if block is invalid or doesn't exists.
       */
-    IOVecLeaf(std::shared_ptr<IOVecBlock> bstore);
+    IOVecLeaf(std::unique_ptr<IOVecBlock> bstore);
 
     /**
      * @brief Clone leaf node
      * @param block is a pointer to block that contains leaf's data
      */
-    IOVecLeaf(std::shared_ptr<IOVecBlock> block, CloneTag);
+    IOVecLeaf(std::unique_ptr<IOVecBlock> block, CloneTag);
 
     /** Load from block store.
       * @param bstore Block store.
@@ -254,7 +254,7 @@ public:
 /** NBTree superblock. Stores refs to subtrees.
  */
 class IOVecSuperblock : public SuperblockAppender {
-    std::shared_ptr<IOVecBlock> block_;
+    std::unique_ptr<IOVecBlock> block_;
     aku_ParamId                 id_;
     u32                         write_pos_;
     u16                         fanout_index_;
@@ -267,7 +267,7 @@ public:
     IOVecSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
 
     //! Read immutable node from block-store.
-    IOVecSuperblock(std::shared_ptr<IOVecBlock> block);
+    IOVecSuperblock(std::unique_ptr<IOVecBlock> block);
 
     //! Read immutable node from block-store.
     IOVecSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);

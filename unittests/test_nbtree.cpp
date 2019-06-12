@@ -1480,9 +1480,9 @@ static LogicAddr save_leaf(IOVecLeaf* leaf, IOVecSuperblock* parent, std::shared
 /**
  * @brief Read block from block store, expect success
  */
-static std::shared_ptr<IOVecBlock> read_block(std::shared_ptr<BlockStore> bstore, LogicAddr addr) {
+static std::unique_ptr<IOVecBlock> read_block(std::shared_ptr<BlockStore> bstore, LogicAddr addr) {
     aku_Status status;
-    std::shared_ptr<IOVecBlock> block;
+    std::unique_ptr<IOVecBlock> block;
     std::tie(status, block) = bstore->read_iovec_block(addr);
     if (status != AKU_SUCCESS) {
         throw std::runtime_error("can't read block");

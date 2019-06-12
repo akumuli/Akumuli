@@ -27,8 +27,6 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-class Block;
-
 struct BlockCache {
     typedef std::shared_ptr<IOVecBlock> PBlock;
     std::vector<PBlock> block_cache_;
