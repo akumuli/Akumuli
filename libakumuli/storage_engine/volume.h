@@ -267,7 +267,7 @@ class Volume {
     AprFilePtr  apr_file_handle_;
     u32         file_size_;
     u32         write_pos_;
-    u32         synced_pos_;
+    //u32         synced_pos_;
     std::string path_;
     // Optional mmap
     std::unique_ptr<MemoryMappedFile> mmap_;

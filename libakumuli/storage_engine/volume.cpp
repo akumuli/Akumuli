@@ -21,7 +21,7 @@
 #include <apr_file_io.h>
 #include <apr_portable.h>
 #include <set>
-#include <fcntl.h>
+//#include <fcntl.h>
 
 #include <boost/exception/all.hpp>
 
@@ -559,7 +559,7 @@ Volume::Volume(const char* path, size_t write_pos)
     , apr_file_handle_(_open_file(path, apr_pool_.get()))
     , file_size_(static_cast<u32>(_get_file_size(apr_file_handle_.get())/AKU_BLOCK_SIZE))
     , write_pos_(static_cast<u32>(write_pos))
-    , synced_pos_(static_cast<u32>(write_pos))
+    //, synced_pos_(static_cast<u32>(write_pos))
     , path_(path)
     , mmap_ptr_(nullptr)
 {
@@ -585,7 +585,7 @@ Volume::Volume(const char* path, size_t write_pos)
 
 void Volume::reset() {
     write_pos_ = 0;
-    synced_pos_ = 0;
+    //synced_pos_ = 0;
 }
 
 void Volume::create_new(const char* path, size_t capacity) {
@@ -688,8 +688,9 @@ std::tuple<aku_Status, const u8*> Volume::read_block_zero_copy(u32 ix) const {
 
 void Volume::flush() {
 
-    apr_status_t status = apr_file_datasync(apr_file_handle_.get());
-    panic_on_error(status, "Volume datasync error");
+    apr_status_t status = apr_file_flush(apr_file_handle_.get());
+    panic_on_error(status, "Volume flush error");
+    /*
     apr_os_file_t fh;
     status = apr_os_file_get(&fh, apr_file_handle_.get());
     panic_on_error(status, "Can't extract file handle");
@@ -707,6 +708,7 @@ void Volume::flush() {
         AKU_PANIC("Unknown error");
     }
     synced_pos_ = write_pos_;
+    */
 }
 
 u32 Volume::get_size() const {
