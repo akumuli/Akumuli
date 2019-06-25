@@ -2101,7 +2101,7 @@ bool IOVecSuperblock::top(SubtreeRef* outref) const {
     u32 offset = sizeof(item) * write_pos_;
     u32 res = block_->read_chunk(&item, offset, sizeof(item));
     if (res == 0) {
-        return AKU_EBAD_DATA;
+        return false;
     }
     *outref = item;
     return true;
