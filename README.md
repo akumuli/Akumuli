@@ -41,7 +41,7 @@ Features
 |Incremental backup             |-              |+              |
 |Clustering                     |-              |+              |
 |Replication                    |-              |+              |
-|ARM support                    |-              |+              |
+|ARM support                    |+              |+              |
 |Windows support                |-              |+              |
 
 |Query language features        |Current version|Future versions|
@@ -51,7 +51,7 @@ Features
 |Aggregate series               |+              |+              |
 |Merge & aggregate              |+              |+              |
 |Group-aggregate                |+              |+              |
-|Group-aggregate & merge        |-              |+              |
+|Group-aggregate & merge        |+              |+              |
 |Join                           |+              |+              |
 |Join & merge                   |-              |+              |
 |Join & group-aggregate         |-              |+              |
@@ -75,6 +75,7 @@ are available via packagecloud:
 
 * Ubuntu 14.04
 * Ubuntu 16.04
+* Ubuntu 18.04
 * Debian Jessie
 * Debian Stretch
 * CentOS 7
@@ -87,5 +88,6 @@ Tools for monitoring
 Akumuli supports OpenTSDB telnet-style API for writing. This means that many collectors works with it
 without any trouble, for instance `netdata`, `collectd`, and `tcollector`. Grafana
 [datasource](https://github.com/akumuli/akumuli-datasource) plugin is availabe as well.
+Akumuli can be used as a long-term storage for Prometheus using [akumuli-prometheus-adapter](https://github.com/akumuli/akumuli-prometheus-adapter).
 
 [Google group](https://groups.google.com/forum/#!forum/akumuli)
