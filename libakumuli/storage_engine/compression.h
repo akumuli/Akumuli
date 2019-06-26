@@ -484,6 +484,12 @@ struct IOVecVByteStreamWriter {
     u32       cnt_;
     u64       prev_;
 
+    IOVecVByteStreamWriter()
+        : block_(nullptr)
+        , cnt_(0)
+        , prev_(0)
+    {}
+
     IOVecVByteStreamWriter(BlockT* block)
         : block_(block)
         , cnt_(0)
@@ -505,7 +511,7 @@ struct IOVecVByteStreamWriter {
         return block_->allocate(n);
     }
 
-    bool empty() const { return block_->size() == 0; }
+    bool empty() const { return !block_ || block_->size() == 0; }
 
     //! Perform combined write (TVal should be integer)
     template<class TVal> bool encode(TVal fst, TVal snd) {

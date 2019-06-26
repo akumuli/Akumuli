@@ -27,10 +27,8 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-class Block;
-
 struct BlockCache {
-    typedef std::shared_ptr<Block> PBlock;
+    typedef std::shared_ptr<IOVecBlock> PBlock;
     std::vector<PBlock> block_cache_;
     const u32 bits_;
     // RNG
@@ -71,17 +69,13 @@ struct BlockStore {
 
     /** Read block from blockstore
       */
-    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr) = 0;
-
-    virtual std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr) = 0;
+    virtual std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr) = 0;
 
     /** Add block to blockstore.
       * @param data Pointer to buffer.
       * @return Status and block's logic address.
       */
-    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data) = 0;
-
-    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<IOVecBlock> data) = 0;
+    virtual std::tuple<aku_Status, LogicAddr> append_block(IOVecBlock& data) = 0;
 
     //! Flush all pending changes.
     virtual void flush() = 0;
@@ -89,8 +83,8 @@ struct BlockStore {
     //! Check if addr exists in block-store
     virtual bool exists(LogicAddr addr) const = 0;
 
-    //! Compute checksum of the input data.
-    virtual u32 checksum(u8 const* begin, size_t size) const = 0;
+    //! Compute checksum
+    virtual u32 checksum(u8 const* data, size_t size) const = 0;
 
     //! Compute checksum of the iovec block
     virtual u32 checksum(const IOVecBlock& block, size_t offset, size_t size) const = 0;
@@ -134,9 +128,7 @@ public:
      * @param data Pointer to buffer.
      * @return Status and block's logic address.
      */
-    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
-
-    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<IOVecBlock> data);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(IOVecBlock &data);
 
     virtual void flush();
 
@@ -168,8 +160,7 @@ public:
 
     /** Read block from blockstore
       */
-    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr);
-    virtual std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, std::unique_ptr<IOVecBlock> > read_iovec_block(LogicAddr addr);
 };
 
 class ExpandableFileStorage : public FileStorage,
@@ -197,8 +188,7 @@ public:
 
     /** Read block from blockstore
      */
-    virtual std::tuple<aku_Status, std::shared_ptr<Block>> read_block(LogicAddr addr);
-    virtual std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, std::unique_ptr<IOVecBlock> > read_iovec_block(LogicAddr addr);
 };
 
 
@@ -218,10 +208,8 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     MemStore(std::function<void(LogicAddr)> append_cb,
              std::function<void(LogicAddr)> read_cb);
 
-    virtual std::tuple<aku_Status, std::shared_ptr<Block> > read_block(LogicAddr addr);
-    virtual std::tuple<aku_Status, std::shared_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr);
-    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<Block> data);
-    virtual std::tuple<aku_Status, LogicAddr> append_block(std::shared_ptr<IOVecBlock> data);
+    virtual std::tuple<aku_Status, std::unique_ptr<IOVecBlock>> read_iovec_block(LogicAddr addr);
+    virtual std::tuple<aku_Status, LogicAddr> append_block(IOVecBlock& data);
     virtual void flush();
     virtual bool exists(LogicAddr addr) const;
     virtual u32 checksum(const IOVecBlock &block, size_t offset, size_t size) const;
@@ -239,37 +227,6 @@ struct MemStore : BlockStore, std::enable_shared_from_this<MemStore> {
     u32 get_write_pos();
     u32 reset_write_pos(u32 pos);
 };
-
-
-//! Represents memory block
-class Block {
-    std::vector<u8>           data_;
-    LogicAddr                 addr_;
-    const u8*                 zptr_;
-
-public:
-    Block(LogicAddr addr, std::vector<u8>&& data);
-
-    //! This c-tor is used in zero-copy mechanism, ptr should outlive the Block object
-    Block(LogicAddr addr, const u8* ptr);
-
-    Block();
-
-    bool is_readonly() const;
-
-    const u8* get_data() const;
-
-    const u8* get_cdata() const;
-
-    u8* get_data();
-
-    size_t get_size() const;
-
-    LogicAddr get_addr() const;
-
-    void set_addr(LogicAddr addr);
-};
-
 
 //! Should be used to create blockstore
 struct BlockStoreBuilder {

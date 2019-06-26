@@ -240,3 +240,34 @@ target_link_libraries(
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_nbtree PROPERTIES EXCLUDE_FROM_ALL 1)
+
+# IOVec perftest
+add_executable(
+    perf_iovec
+    perf_iovec.cpp
+    perftest_tools.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/ref_store.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/operators/operator.cpp
+    ../libakumuli/storage_engine/operators/aggregate.cpp
+    ../libakumuli/storage_engine/operators/scan.cpp
+    ../libakumuli/storage_engine/operators/join.cpp
+    ../libakumuli/storage_engine/operators/merge.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/status_util.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/crc32c.cpp
+)
+
+target_link_libraries(
+    perf_iovec
+    pthread
+    "${JEMALLOC_LIBRARY}"
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+)
+set_target_properties(perf_iovec PROPERTIES EXCLUDE_FROM_ALL 1)

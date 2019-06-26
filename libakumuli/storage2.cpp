@@ -900,18 +900,18 @@ void dump_tree(std::ostream &stream,
         };
 
         if (type == StackItemType::NORMAL || type == StackItemType::RECOVERY) {
-            std::shared_ptr<Block> block;
+            std::unique_ptr<IOVecBlock> block;
             aku_Status status;
-            std::tie(status, block) = bstore->read_block(curr);
+            std::tie(status, block) = bstore->read_iovec_block(curr);
             if (status != AKU_SUCCESS) {
                 stream << _tag("addr") << afmt(curr) << "</addr>" << std::endl;
                 stream << _tag("fail") << StatusUtil::c_str(status) << "</fail>" << std::endl;
                 continue;
             }
-            auto subtreeref = reinterpret_cast<const SubtreeRef*>(block->get_cdata());
+            auto subtreeref = block->get_cheader<SubtreeRef>();
             if (subtreeref->type == NBTreeBlockType::LEAF) {
                 // Dump leaf node's content
-                NBTreeLeaf leaf(block);
+                IOVecLeaf leaf(std::move(block));
                 SubtreeRef const* ref = leaf.get_leafmeta();
                 stream << _tag("type")         << "Leaf"                       << "</type>\n";
                 stream << _tag("addr")         << afmt(curr)                   << "</addr>\n";
@@ -940,19 +940,19 @@ void dump_tree(std::ostream &stream,
                         stack.push(std::make_tuple(EMPTY_ADDR, indent + 1, StackItemType::CLOSE_NODE));
                         stack.push(std::make_tuple(prev, indent + 2, StackItemType::NORMAL));
                         stack.push(std::make_tuple(EMPTY_ADDR, indent + 1, StackItemType::OPEN_NODE));
-                        std::tie(status, block) = bstore->read_block(prev);
+                        std::tie(status, block) = bstore->read_iovec_block(prev);
                         if (status != AKU_SUCCESS) {
                             // Block was deleted but it should be on the stack anyway
                             break;
                         }
-                        NBTreeLeaf lnext(block);
+                        IOVecLeaf lnext(std::move(block));
                         prev = lnext.get_prev_addr();
                     }
                     stack.push(std::make_tuple(EMPTY_ADDR, indent, StackItemType::OPEN_FANOUT));
                 }
             } else {
                 // Dump inner node's content and children
-                NBTreeSuperblock sblock(block);
+                IOVecSuperblock sblock(std::move(block));
                 SubtreeRef const* ref = sblock.get_sblockmeta();
                 stream << _tag("addr")         << afmt(curr)                   << "</addr>\n";
                 stream << _tag("type")         << "Superblock"                 << "</type>\n";
@@ -981,12 +981,12 @@ void dump_tree(std::ostream &stream,
                         stack.push(std::make_tuple(EMPTY_ADDR, indent + 1, StackItemType::CLOSE_NODE));
                         stack.push(std::make_tuple(prev, indent + 2, StackItemType::NORMAL));
                         stack.push(std::make_tuple(EMPTY_ADDR, indent + 1, StackItemType::OPEN_NODE));
-                        std::tie(status, block) = bstore->read_block(prev);
+                        std::tie(status, block) = bstore->read_iovec_block(prev);
                         if (status != AKU_SUCCESS) {
                             // Block was deleted but it should be on the stack anyway
                             break;
                         }
-                        NBTreeSuperblock sbnext(block);
+                        IOVecSuperblock sbnext(std::move(block));
                         prev = sbnext.get_prev_addr();
                     }
                     stack.push(std::make_tuple(EMPTY_ADDR, indent, StackItemType::OPEN_FANOUT));

@@ -19,7 +19,9 @@
 #include <apr.h>
 #include <apr_general.h>
 #include <apr_file_io.h>
+#include <apr_portable.h>
 #include <set>
+//#include <fcntl.h>
 
 #include <boost/exception/all.hpp>
 
@@ -145,6 +147,137 @@ void IOVecBlock::set_write_pos(int pos) {
         AKU_PANIC("Invalid shredded block write-position");
     }
     pos_ = pos;
+}
+
+void IOVecBlock::copy_from(const IOVecBlock& other) {
+    // Single chunk
+    if (other.data_[0].size() == AKU_BLOCK_SIZE) {
+        u32 cons = 0;
+        for (int i = 0; i < NCOMPONENTS; i++) {
+            data_[i].resize(COMPONENT_SIZE);
+            memcpy(data_[i].data(), other.data_[0].data() + cons, COMPONENT_SIZE);
+            cons += COMPONENT_SIZE;
+        }
+    }
+    // Four components
+    else {
+        for (int i = 0; i < NCOMPONENTS; i++) {
+            if (other.data_[i].size() == 0) {
+                return;
+            }
+            data_[i].resize(COMPONENT_SIZE);
+            memcpy(data_[i].data(), other.data_[i].data(), COMPONENT_SIZE);
+        }
+    }
+}
+
+u32 IOVecBlock::read_chunk(void* dest, u32 offset, u32 size) {
+    if (data_[0].size() == AKU_BLOCK_SIZE) {
+        memcpy(dest, data_[0].data() + offset, size);
+    }
+    else {
+        // Locate the component first
+        u32 ixbegin  = offset / IOVecBlock::COMPONENT_SIZE;
+        u32 offbegin = offset % IOVecBlock::COMPONENT_SIZE;
+        u32 end      = offset + size;
+        u32 ixend    = end / IOVecBlock::COMPONENT_SIZE;
+        if (ixbegin == ixend) {
+            // Fast path, access single component
+            if (data_[ixbegin].size() == 0) {
+                return 0;
+            }
+            u8* source = data_[ixbegin].data();
+            memcpy(dest, source + offbegin, size);
+        }
+        else {
+            // Read from two components
+            if (data_[ixbegin].size() == 0) {
+                return 0;
+            }
+            u8* c1 = data_[ixbegin].data();
+            u32 l1  = IOVecBlock::COMPONENT_SIZE - offbegin;
+            memcpy(dest, c1 + offbegin, l1);
+            // Write second component
+            if (data_[ixend].size() == 0) {
+                return 0;
+            }
+            u32 l2 = size - l1;
+            u8* c2 = data_[ixend].data();
+            memcpy(static_cast<u8*>(dest) + l1, c2, l2);
+        }
+    }
+    return size;
+}
+
+u32 IOVecBlock::append_chunk(const void* source, u32 size) {
+    if (is_readonly()) {
+        return 0;
+    }
+    if (data_[0].size() == AKU_BLOCK_SIZE) {
+        // Fast path
+        if (pos_ + size > AKU_BLOCK_SIZE) {
+            return 0;
+        }
+        memcpy(data_[0].data() + pos_, source, size);
+    }
+    else {
+        int ixbegin  = pos_ / IOVecBlock::COMPONENT_SIZE;
+        int offbegin = pos_ % IOVecBlock::COMPONENT_SIZE;
+        int end      = pos_ + size;
+        int ixend    = end / IOVecBlock::COMPONENT_SIZE;
+        if (ixbegin >= IOVecBlock::NCOMPONENTS || ixend >= IOVecBlock::NCOMPONENTS) {
+            return 0;
+        }
+        if (ixbegin == ixend) {
+            // Fast path, write to the single component
+            if (data_[ixbegin].size() == 0) {
+                int ixadd = add();
+                if (ixadd != ixbegin) {
+                    AKU_PANIC("IOVec block corrupted");
+                }
+            }
+            u8* dest = data_[ixbegin].data();
+            memcpy(dest + offbegin, source, size);
+        }
+        else {
+            // Write to two components
+            if (data_[ixbegin].size() == 0) {
+                int ixadd = add();
+                if (ixadd != ixbegin) {
+                    AKU_PANIC("First IOVec block corrupted");
+                }
+            }
+            u8* c1 = data_[ixbegin].data();
+            u32 l1  = IOVecBlock::COMPONENT_SIZE - offbegin;
+            memcpy(c1 + offbegin, source, l1);
+            // Write second component
+            if (data_[ixend].size() == 0) {
+                int ixadd = add();
+                if (ixadd != ixend) {
+                    AKU_PANIC("Second IOVec blcok corrupted");
+                }
+            }
+            u32 l2 = size - l1;
+            u8* c2 = data_[ixend].data();
+            memcpy(c2, static_cast<const u8*>(source) + l1, l2);
+        }
+    }
+    pos_ += size;
+    return pos_;
+}
+
+void IOVecBlock::set_write_pos_and_shrink(int top) {
+    set_write_pos(top);
+    if (is_readonly() || data_[0].size() == AKU_BLOCK_SIZE) {
+        return;
+    }
+    int component  = pos_ / IOVecBlock::COMPONENT_SIZE;
+    for (int ix = IOVecBlock::NCOMPONENTS; ix --> 0;) {
+        if (ix > component) {
+            data_[ix].resize(0);
+            data_[ix].shrink_to_fit();
+        }
+    }
 }
 
 //--
@@ -426,10 +559,11 @@ Volume::Volume(const char* path, size_t write_pos)
     , apr_file_handle_(_open_file(path, apr_pool_.get()))
     , file_size_(static_cast<u32>(_get_file_size(apr_file_handle_.get())/AKU_BLOCK_SIZE))
     , write_pos_(static_cast<u32>(write_pos))
+    //, synced_pos_(static_cast<u32>(write_pos))
     , path_(path)
     , mmap_ptr_(nullptr)
 {
-#if UINTPTR_MAX == 0xFFFFFFFFFFFFFFF0
+#if 0//UINTPTR_MAX == 0xFFFFFFFFFFFFFFFF
     // 64-bit architecture, we can use mmap for speed
     mmap_.reset(new MemoryMappedFile(path, false));
     if (mmap_->is_bad()) {
@@ -451,6 +585,7 @@ Volume::Volume(const char* path, size_t write_pos)
 
 void Volume::reset() {
     write_pos_ = 0;
+    //synced_pos_ = 0;
 }
 
 void Volume::create_new(const char* path, size_t capacity) {
@@ -552,8 +687,28 @@ std::tuple<aku_Status, const u8*> Volume::read_block_zero_copy(u32 ix) const {
 }
 
 void Volume::flush() {
+
     apr_status_t status = apr_file_flush(apr_file_handle_.get());
     panic_on_error(status, "Volume flush error");
+    /*
+    apr_os_file_t fh;
+    status = apr_os_file_get(&fh, apr_file_handle_.get());
+    panic_on_error(status, "Can't extract file handle");
+    int advstatus= posix_fadvise(fh,
+                                 synced_pos_ * AKU_BLOCK_SIZE,
+                                 (write_pos_ - synced_pos_) * AKU_BLOCK_SIZE,
+                                 POSIX_FADV_DONTNEED);
+    if (advstatus != 0) {
+        if (advstatus == EINVAL) {
+            AKU_PANIC("Invalid fadvise parameters");
+        }
+        if (advstatus == EBADF) {
+            AKU_PANIC("Invalid file descriptor");
+        }
+        AKU_PANIC("Unknown error");
+    }
+    synced_pos_ = write_pos_;
+    */
 }
 
 u32 Volume::get_size() const {

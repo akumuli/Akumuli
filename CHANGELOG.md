@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.66
+--------------
+
+IMPROVEMENT
+
+* Improve memory requirements by using vector I/O 
+
 Version 0.8.65
 --------------
 

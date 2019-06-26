@@ -94,154 +94,16 @@ struct NBTreeCandlestickHint {
     aku_Timestamp min_delta;
 };
 
+struct SuperblockAppender {
+    ~SuperblockAppender() = default;
+    virtual aku_Status append(SubtreeRef const& p) = 0;
+    virtual bool top(SubtreeRef* outref) const = 0;
+    virtual bool top(LogicAddr* outaddr) const = 0;
+};
+
 
 class NBTreeSuperblock;
-
-/** NBTree leaf node. Supports append operation.
-  * Can be commited to block store when full.
-  */
-class NBTreeLeaf {
-    //! Root address
-    LogicAddr prev_;
-    //! Buffer for pending updates
-    std::shared_ptr<Block> block_;
-    //! DataBlockWriter for pending `append` operations.
-    DataBlockWriter writer_;
-    //! Fanout index
-    u16 fanout_index_;
-
-public:
-    //! Empty tag to choose c-tor
-    struct CloneTag {};
-
-    enum class LeafLoadMethod {
-        FULL_PAGE_LOAD,
-        ONLY_HEADER,
-    };
-
-    //! Only for testing and benchmarks
-    size_t _get_uncommitted_size() const;
-
-    /** Create empty leaf node.
-      * @param id Series id.
-      * @param link to block store.
-      * @param prev Prev element of the tree.
-      * @param fanout_index Index inside current fanout
-      */
-    NBTreeLeaf(aku_ParamId id, LogicAddr prev, u16 fanout_index);
-
-    /** Load from block store.
-      * @param block Leaf's serialized data.
-      * @param load Load method.
-      * @note This c-tor panics if block is invalid or doesn't exists.
-      */
-    NBTreeLeaf(std::shared_ptr<Block> bstore);
-
-    /**
-     * @brief Clone leaf node
-     * @param block is a pointer to block that contains leaf's data
-     */
-    NBTreeLeaf(std::shared_ptr<Block> block, CloneTag tag);
-
-    /** Load from block store.
-      * @param bstore Block store.
-      * @param curr Address of the current leaf-node.
-      * @param load Load method.
-      */
-    NBTreeLeaf(std::shared_ptr<BlockStore> bstore, LogicAddr curr);
-
-    //! Get leaf metadata.
-    SubtreeRef const* get_leafmeta() const;
-
-    //! Returns number of elements.
-    size_t nelements() const;
-
-    //! Read timestamps
-    std::tuple<aku_Timestamp, aku_Timestamp> get_timestamps() const;
-
-    //! Get logic address of the previous node
-    LogicAddr get_prev_addr() const;
-
-    //! Set prev addr (works only on mutable node)
-    void set_prev_addr(LogicAddr addr);
-
-    //! Set fanout index of the node
-    void set_node_fanout(u16 fanout);
-
-    //! Return address of the node itself (or EMPTY_ADDR if not saved yet)
-    LogicAddr get_addr() const;
-
-    /** Read all elements from the leaf node.
-      * @param timestamps Destination for timestamps.
-      * @param values Destination for values.
-      * @return status.
-      */
-    aku_Status read_all(std::vector<aku_Timestamp>* timestamps, std::vector<double>* values) const;
-
-    //! Append values to NBTree
-    aku_Status append(aku_Timestamp ts, double value);
-
-    /** Flush all pending changes to block store and close.
-      * Calling this function too often can result in unoptimal space usage.
-      */
-    std::tuple<aku_Status, LogicAddr> commit(std::shared_ptr<BlockStore> bstore);
-
-    //! Return node's fanout index
-    u16 get_fanout() const;
-
-    //! Return id of the tree
-    aku_ParamId get_id() const;
-
-    //! Return iterator that outputs all values in time range that is stored in this leaf.
-    std::unique_ptr<RealValuedOperator> range(aku_Timestamp begin, aku_Timestamp end) const;
-
-    /**
-     * @brief Return filtering operator
-     * @param begin is a beginning of the search range (inclusive)
-     * @param end is an end of the search range (exclusive)
-     * @param filter is a value filter
-     * @return pointer to operator (it can be invalid due to I/O error)
-     */
-    std::unique_ptr<RealValuedOperator> filter(aku_Timestamp begin,
-                                               aku_Timestamp end,
-                                               const ValueFilter& filter) const;
-
-    std::unique_ptr<AggregateOperator> aggregate(aku_Timestamp begin, aku_Timestamp end) const;
-
-    //! Return iterator that returns candlesticks
-    std::unique_ptr<AggregateOperator> candlesticks(aku_Timestamp begin, aku_Timestamp end, NBTreeCandlestickHint hint) const;
-
-    //! Group-aggregate query results iterator
-    std::unique_ptr<AggregateOperator> group_aggregate(aku_Timestamp begin, aku_Timestamp end, u64 step) const;
-
-    // Node split experiment //
-
-    /**
-     * @brief Split the node into the specified top node
-     * @param bstore is a pointer to blockstore
-     * @param pivot is a pivot point of the split
-     * @param preserve_backrefs is a flag that controls the backrefs (ignored)
-     * @param top_level is a top level node (the method will add links to this node
-     *        instead of creating new inner node, the commit method of the `top_level` node wouldn't be called)
-     * @return status and address of the new topmost node (always EMPTY_ADDR)
-     */
-    std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
-                                                 aku_Timestamp pivot,
-                                                 bool preserve_backrefs, u16 *fanout_index,
-                                                 NBTreeSuperblock* top_level);
-
-
-    /**
-     * @brief Split the node
-     * @param bstore is a pointer to blockstore
-     * @param pivot is a pivot point of the split
-     * @param preserve_backrefs is a flag that controls the backrefs (ignored)
-     * @return status and address of the new topmost node
-     */
-    std::tuple<aku_Status, LogicAddr> split(std::shared_ptr<BlockStore> bstore,
-                                            aku_Timestamp pivot,
-                                            bool preserve_backrefs);
-};
+class IOVecSuperblock;
 
 
 /** NBTree leaf node. Supports append operation.
@@ -251,13 +113,16 @@ class IOVecLeaf {
     //! Root address
     LogicAddr prev_;
     //! Buffer for pending updates
-    std::shared_ptr<IOVecBlock> block_;
+    std::unique_ptr<IOVecBlock> block_;
     //! DataBlockWriter for pending `append` operations.
     IOVecBlockWriter<IOVecBlock> writer_;
     //! Fanout index
     u16 fanout_index_;
 
 public:
+
+    //! Empty tag to choose c-tor
+    struct CloneTag {};
 
     //! Only for testing and benchmarks
     size_t _get_uncommitted_size() const;
@@ -277,7 +142,13 @@ public:
       * @param load Load method.
       * @note This c-tor panics if block is invalid or doesn't exists.
       */
-    IOVecLeaf(std::shared_ptr<IOVecBlock> bstore);
+    IOVecLeaf(std::unique_ptr<IOVecBlock> bstore);
+
+    /**
+     * @brief Clone leaf node
+     * @param block is a pointer to block that contains leaf's data
+     */
+    IOVecLeaf(std::unique_ptr<IOVecBlock> block, CloneTag);
 
     /** Load from block store.
       * @param bstore Block store.
@@ -364,7 +235,7 @@ public:
     std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
                                                  aku_Timestamp pivot,
                                                  bool preserve_backrefs, u16 *fanout_index,
-                                                 NBTreeSuperblock* top_level);
+                                                 SuperblockAppender* top_level);
 
 
     /**
@@ -382,27 +253,27 @@ public:
 
 /** NBTree superblock. Stores refs to subtrees.
  */
-class NBTreeSuperblock {
-    std::shared_ptr<Block> block_;
-    aku_ParamId            id_;
-    u32                    write_pos_;
-    u16                    fanout_index_;
-    u16                    level_;
-    LogicAddr              prev_;
-    bool                   immutable_;
+class IOVecSuperblock : public SuperblockAppender {
+    std::unique_ptr<IOVecBlock> block_;
+    aku_ParamId                 id_;
+    u32                         write_pos_;
+    u16                         fanout_index_;
+    u16                         level_;
+    LogicAddr                   prev_;
+    bool                        immutable_;
 
 public:
     //! Create new writable node.
-    NBTreeSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
+    IOVecSuperblock(aku_ParamId id, LogicAddr prev, u16 fanout, u16 lvl);
 
     //! Read immutable node from block-store.
-    NBTreeSuperblock(std::shared_ptr<Block> block);
+    IOVecSuperblock(std::unique_ptr<IOVecBlock> block);
 
     //! Read immutable node from block-store.
-    NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
+    IOVecSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore);
 
     //! Copy on write c-tor. Create new node, copy content referenced by address, remove last entery if needed.
-    NBTreeSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last);
+    IOVecSuperblock(LogicAddr addr, std::shared_ptr<BlockStore> bstore, bool remove_last);
 
     //! Append subtree ref
     aku_Status append(SubtreeRef const& p);
@@ -479,7 +350,7 @@ public:
     std::tuple<aku_Status, LogicAddr> split_into(std::shared_ptr<BlockStore> bstore,
                                                  aku_Timestamp pivot,
                                                  bool preserve_horizontal_links,
-                                                 NBTreeSuperblock *root);
+                                                 SuperblockAppender *root);
 
     /**
      * @brief Split the node
@@ -755,7 +626,7 @@ public:
  * @param out is an output parameter
  * @return status
  */
-aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out);
+aku_Status init_subtree_from_leaf(const IOVecLeaf& leaf, SubtreeRef& out);
 
 /**
  * @brief Initialize SubtreeRef by reading subtree (addr field is not set)
@@ -764,6 +635,7 @@ aku_Status init_subtree_from_leaf(const NBTreeLeaf& leaf, SubtreeRef& out);
  * @return status
  */
 aku_Status init_subtree_from_subtree(const NBTreeSuperblock& node, SubtreeRef& backref);
+aku_Status init_subtree_from_subtree(const IOVecSuperblock& node, SubtreeRef& backref);
 
 }
 }  // namespaces

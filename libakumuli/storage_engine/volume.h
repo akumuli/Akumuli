@@ -147,9 +147,47 @@ struct IOVecBlock {
 
     const u8* get_cdata(int component) const;
 
+    template<typename Header>
+    const Header* get_header() const {
+        static_assert(sizeof(Header) < 1024, "Header should be less than 1KB");
+        const u8* ptr = get_data(0);
+        return reinterpret_cast<const Header*>(ptr);
+    }
+
+    template<typename Header>
+    const Header* get_cheader() const {
+        return get_header<Header>();
+    }
+
+    template<typename Header>
+    Header* get_header() {
+        static_assert(sizeof(Header) < 1024, "Header should be less than 1KB");
+        u8* ptr = get_data(0);
+        return reinterpret_cast<Header*>(ptr);
+    }
+
     u8* get_data(int component);
 
     size_t get_size(int component) const;
+
+    /** Copy content of the 'other' block into current block.
+      */
+    void copy_from(const IOVecBlock& other);
+
+    /** Copy 'size' bytes into 'dest' starting from 'offset'.
+      * Return number of copied bytes.
+      */
+    u32 read_chunk(void *dest, u32 offset, u32 size);
+
+    /** Copy 'size' bytes into the block starting from 'source'.
+      * Return number of new write pos or 0 on error.
+      */
+    u32 append_chunk(const void *source, u32 size);
+
+    /** Adjust write pos.
+      * Try to shrink the block by deallocating unused chunks.
+      */
+    void set_write_pos_and_shrink(int top);
 };
 
 typedef std::unique_ptr<apr_pool_t, void (*)(apr_pool_t*)> AprPoolPtr;
@@ -229,6 +267,7 @@ class Volume {
     AprFilePtr  apr_file_handle_;
     u32         file_size_;
     u32         write_pos_;
+    //u32         synced_pos_;
     std::string path_;
     // Optional mmap
     std::unique_ptr<MemoryMappedFile> mmap_;
