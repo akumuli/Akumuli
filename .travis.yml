@@ -15,6 +15,7 @@ matrix:
       compiler: gcc
       env:
       - DISTRIBUTION=ubuntu/trusty
+      - NODE_SPLIT_BUILD=false
       - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=true
       - GENERIC_BUILD=false
@@ -31,6 +32,7 @@ matrix:
           - master
       env:
       - DISTRIBUTION=ubuntu/trusty
+      - NODE_SPLIT_BUILD=false
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=true
       - GENERIC_BUILD=true
@@ -43,6 +45,7 @@ matrix:
       osx_image: xcode9.2
       compiler: clang
       env:
+      - NODE_SPLIT_BUILD=false
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
@@ -55,12 +58,27 @@ matrix:
       compiler: gcc
       env:
       - DISTRIBUTION=ubuntu/trusty
+      - NODE_SPLIT_BUILD=false
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       #- DEBUG_BUILD=true
       script:
       - bash ./CI/runci.sh ubuntu-14.04-wal
+    # VM-based 64-bit node-split test build (GCC)
+    - os: linux
+      dist: trusty
+      sudo: required
+      compiler: gcc
+      env:
+      - DISTRIBUTION=ubuntu/trusty
+      - NODE_SPLIT_BUILD=true
+      - DEPLOY_PACKAGE=false
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      #- DEBUG_BUILD=true
+      script:
+      - bash ./CI/runci.sh ubuntu-14.04-node-split
     # Container based 64-bit Xenial build
     - os: linux
       dist: trusty
@@ -69,6 +87,7 @@ matrix:
       - docker
       env:
       - DISTRIBUTION=ubuntu/xenial
+      - NODE_SPLIT_BUILD=false
       - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
@@ -85,6 +104,7 @@ matrix:
       - docker
       env:
       - DISTRIBUTION=ubuntu/bionic
+      - NODE_SPLIT_BUILD=false
       - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
@@ -101,6 +121,7 @@ matrix:
       - docker
       env:
       - DISTRIBUTION=debian/stretch
+      - NODE_SPLIT_BUILD=false
       - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
@@ -117,6 +138,7 @@ matrix:
       - docker
       env:
       - DISTRIBUTION=debian/jessie
+      - NODE_SPLIT_BUILD=false
       - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
@@ -133,6 +155,7 @@ matrix:
       - docker
       env:
       - DISTRIBUTION=el/7
+      - NODE_SPLIT_BUILD=false
       - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false

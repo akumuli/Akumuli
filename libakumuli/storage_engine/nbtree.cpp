@@ -3416,6 +3416,71 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value, boo
         rescue_points_.push_back(EMPTY_ADDR);
     }
     auto result = NBTreeAppendResult::OK;
+#ifdef AKU_ENABLE_MUTATION_TESTING
+    if (dist_(rand_gen_) < threshold_) {
+        // This code is activated with some small probability.
+        // Split some random node, the `split` method acts as `commit`
+        // thus we need to update rescue points in some cases.
+        aku_Status status;
+        LogicAddr paddr = EMPTY_ADDR;
+        u32 extent_index = chose_random_node();
+        AggregationResult pre_split;
+        std::tie(status, pre_split) = get_aggregates(extent_index);
+        assert(status == AKU_SUCCESS);
+        paddr = split_random_node(extent_index);
+        if (paddr != EMPTY_ADDR) {
+
+            std::shared_ptr<IOVecBlock> rblock;
+            std::tie(status, rblock) = read_and_check(bstore_, paddr);
+            if (status != AKU_SUCCESS) {
+                AKU_PANIC("Can't read back the data");
+            }
+            // extent_index and the level of the node can mismatch
+            auto pnode = rblock->get_header<SubtreeRef>();
+
+            if (rescue_points_.size() > pnode->level) {
+                rescue_points_.at(pnode->level) = paddr;
+            } else {
+                rescue_points_.push_back(paddr);
+            }
+            check_rescue_points(extent_index);
+            result = NBTreeAppendResult::OK_FLUSH_NEEDED;
+            if (extent_index > 0) {
+                u16 prev_fanout = 0;
+                LogicAddr prev_addr = EMPTY_ADDR;
+                if (pnode->fanout_index < AKU_NBTREE_MAX_FANOUT_INDEX) {
+                    prev_fanout = pnode->fanout_index + 1;
+                    prev_addr   = paddr;
+                }
+                auto prev_extent = extent_index - 1;
+                status = extents_.at(prev_extent)->update_prev_addr(prev_addr);
+                if (status != AKU_SUCCESS) {
+                    AKU_PANIC("Invalid access pattern in split method");
+                }
+                status = extents_.at(prev_extent)->update_fanout_index(prev_fanout);
+                if (status != AKU_SUCCESS) {
+                    AKU_PANIC("Can't update fanout index of the node");
+                }
+            }
+
+            // Check the results
+            if (extent_index != 0) {
+                AggregationResult post_split;
+                std::tie(status, post_split) = get_aggregates(extent_index);
+                assert(status == AKU_SUCCESS);
+                assert(pre_split._begin == post_split._begin);
+                assert(pre_split._end == post_split._end);
+                assert(pre_split.cnt == post_split.cnt);
+                assert(pre_split.first == post_split.first);
+                assert(pre_split.last == post_split.last);
+                assert(pre_split.max == post_split.max);
+                assert(pre_split.min == post_split.min);
+                assert(pre_split.maxts == post_split.maxts);
+                assert(pre_split.mints == post_split.mints);
+            }
+        }
+    }
+#endif
     bool parent_saved = false;
     LogicAddr addr = EMPTY_ADDR;
     std::tie(parent_saved, addr) = extents_.front()->append(ts, value);

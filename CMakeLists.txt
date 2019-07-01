@@ -24,6 +24,11 @@ set(CMAKE_MACOSX_RPATH 1)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
+option(ENABLE_NODE_SPLIT_CHAOS_TEST "Enable node-split chaos testing" OFF)
+if(ENABLE_NODE_SPLIT_CHAOS_TEST)
+    add_definitions(-DAKU_ENABLE_MUTATION_TESTING)
+endif()
+
 if (APPLE)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wno-delete-non-virtual-dtor -Wno-deprecated -Wno-pessimizing-move")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wno-delete-non-virtual-dtor -Wno-deprecated -Wno-pessimizing-move")

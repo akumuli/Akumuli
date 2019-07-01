@@ -35,6 +35,12 @@ else
         if [ $? -ne 0 ]; then
             exit 1
         fi
+    elif [[ $NODE_SPLIT_BUILD == true ]]; then
+        echo "NODE-SPLIT TEST BUILD"
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_NODE_SPLIT_CHAOS_TEST:BOOL=ON
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
     else
         echo "SKYLAKE BUILD"
         cmake .. -DCMAKE_BUILD_TYPE=Release;
