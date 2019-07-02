@@ -3433,6 +3433,40 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value, boo
     return result;
 }
 
+NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, u8* blob, u32 size) {
+    // Correct event serialization sequence:
+    // TS       - 0         1           2           3
+    // value    - size      blob[0..7]  blob[8..15] blob[16, 23]...
+    // Timestamps will be rounded up to 1us.
+    // It won't be possible to have events with nanosecond resolution.
+    // Size of the event is limited by 999 8-byte elements.
+    // If during write failure occured the reader partial write is possible so
+    // reader should check for this by comparing size at TS[0] and real element
+    // count.
+    aku_Timestamp basets = (ts / 1000) * 1000;
+    NBTreeAppendResult outres = append(basets++, size, false);
+    if (outres == NBTreeAppendResult::FAIL_BAD_ID ||
+        outres == NBTreeAppendResult::FAIL_BAD_VALUE ||
+        outres == NBTreeAppendResult::FAIL_LATE_WRITE) {
+        return outres;
+    }
+    for (u32 i = 0; i < size; i += 8) {
+        double element = 0;
+        memcpy(&element, blob + i, std::min(8u, size - i));
+        auto res = append(basets++, element, false);
+        switch (res) {
+        case NBTreeAppendResult::OK:
+            continue;
+        case NBTreeAppendResult::OK_FLUSH_NEEDED:
+            outres = res;
+            break;
+        default:
+            return res;
+        };
+    }
+    return outres;
+}
+
 bool NBTreeExtentsList::append(const SubtreeRef &pl) {
     // NOTE: this method should be called by extents which
     //       is called by another `append` overload recursively
