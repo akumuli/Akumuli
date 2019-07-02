@@ -78,7 +78,7 @@ matrix:
       - GENERIC_BUILD=false
       #- DEBUG_BUILD=true
       script:
-      - bash ./CI/runci.sh ubuntu-14.04-node-split
+      - bash ./CI/runci.sh ubuntu-14.04
     # Container based 64-bit Xenial build
     - os: linux
       dist: trusty
