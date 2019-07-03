@@ -540,6 +540,7 @@ public:
      * @return
      */
     std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
+    std::unique_ptr<BinaryDataOperator> search_binary(aku_Timestamp begin, aku_Timestamp end) const;
 
     /**
      * @brief search function

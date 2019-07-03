@@ -1552,6 +1552,71 @@ std::tuple<aku_Status, size_t> NBTreeSBlockCandlesticsIter::read(aku_Timestamp *
 }
 
 
+// ////////////////// //
+// BinaryDataIterator //
+// ////////////////// //
+
+class BinaryDataIterator : public BinaryDataOperator {
+    std::unique_ptr<RealValuedOperator> base_;
+    enum {
+        BUF_SIZE = 64
+    };
+    std::array<aku_Timestamp, BUF_SIZE> ts_;
+    std::array<double, BUF_SIZE> xs_;
+    size_t pos_;
+    size_t cap_;
+    std::string curr_;
+public:
+    BinaryDataIterator(std::unique_ptr<RealValuedOperator> base)
+    : base_(std::move(base))
+    , pos_(0)
+    , cap_(0)
+    {
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, std::string *destval, size_t size) {
+        size_t outsz = 0;
+        if (pos_ == cap_) {
+            aku_Status status;
+            std::tie(status, cap_) = base_->read(ts_.data(), xs_.data(), BUF_SIZE);
+            if (status == AKU_ENO_DATA && cap_ == 0) {
+                return std::make_pair(status, 0);
+            }
+            else if (status != AKU_SUCCESS) {
+                return std::make_pair(status, 0);
+            }
+        }
+        while (pos_ < cap_) {
+            char body[8];
+            auto t = ts_[pos_];
+            auto x = xs_[pos_];
+            if (t % 1000 == 0) {
+                curr_.clear();
+                curr_.reserve(static_cast<size_t>(x));
+            } else {
+                memcpy(body, &x, 8);
+                for (int i = 0; i < 8; i++) {
+                    if (curr_.capacity() > curr_.size()) {
+                        curr_.push_back(body[i]);
+                    }
+                    else {
+                        *destts++ = (t / 1000) * 1000;
+                        *destval++ = curr_;
+                        size--;
+                        outsz++;
+                    }
+                }
+            }
+        }
+        return std::make_pair(AKU_SUCCESS, outsz);
+    }
+
+    virtual Direction get_direction() {
+        return base_->get_direction() == RealValuedOperator::Direction::FORWARD ? Direction::FORWARD : Direction::BACKWARD;
+    }
+};
+
+
 // ///////// //
 // IOVecLeaf //
 
@@ -3739,6 +3804,31 @@ std::unique_ptr<RealValuedOperator> NBTreeExtentsList::search(aku_Timestamp begi
     std::unique_ptr<RealValuedOperator> concat;
     concat.reset(new ChainOperator(std::move(iterators)));
     return concat;
+}
+
+std::unique_ptr<BinaryDataOperator> NBTreeExtentsList::search_binary(aku_Timestamp begin, aku_Timestamp end) const {
+    if (!initialized_) {
+        const_cast<NBTreeExtentsList*>(this)->force_init();
+    }
+    SharedLock lock(lock_);
+    std::vector<std::unique_ptr<RealValuedOperator>> iterators;
+    if (begin < end) {
+        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+            iterators.push_back((*it)->search(begin, end));
+        }
+    } else {
+        for (auto const& root: extents_) {
+            iterators.push_back(root->search(begin, end));
+        }
+    }
+    if (iterators.size() == 1) {
+        std::unique_ptr<BinaryDataOperator> res(new BinaryDataIterator(std::move(iterators.front())));
+        return res;
+    }
+    std::unique_ptr<RealValuedOperator> concat;
+    concat.reset(new ChainOperator(std::move(iterators)));
+    std::unique_ptr<BinaryDataOperator> res(new BinaryDataIterator(std::move(concat)));
+    return res;
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeExtentsList::filter(aku_Timestamp begin,

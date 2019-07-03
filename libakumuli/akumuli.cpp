@@ -222,6 +222,12 @@ public:
         return session_->write(sample);
     }
 
+    aku_Status add_binary(aku_ParamId id, aku_Timestamp ts, const char* data, size_t sz) {
+        // TODO: implement
+        //return session_->write();
+        throw "Not implemented";
+    }
+
     CursorImpl* query(const char* q) {
         auto res = new CursorImpl(session_, q);
         return res;
@@ -340,6 +346,11 @@ aku_Status aku_write_double_raw(aku_Session* session, aku_ParamId param_id, aku_
 aku_Status aku_write(aku_Session* session, const aku_Sample* sample) {
     auto ises = reinterpret_cast<Session*>(session);
     return ises->add_sample(*sample);
+}
+
+aku_Status aku_write_binary_raw(aku_Session* session, aku_ParamId id, aku_Timestamp ts, const char* src, size_t size) {
+    auto ises = reinterpret_cast<Session*>(session);
+    return ises->add_binary(id, ts, src, size);
 }
 
 
