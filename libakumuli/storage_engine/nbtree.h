@@ -531,7 +531,7 @@ public:
       */
     NBTreeAppendResult append(aku_Timestamp ts, double value, bool allow_duplicate_timestamps=true);
 
-    NBTreeAppendResult append(aku_Timestamp ts, u8* blob, u32 size);
+    NBTreeAppendResult append(aku_Timestamp ts, const u8 *blob, u32 size);
 
     /**
      * @brief search function

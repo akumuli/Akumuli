@@ -1566,6 +1566,7 @@ class BinaryDataIterator : public BinaryDataOperator {
     size_t pos_;
     size_t cap_;
     std::string curr_;
+    aku_Timestamp outts_;
 public:
     BinaryDataIterator(std::unique_ptr<RealValuedOperator> base)
     : base_(std::move(base))
@@ -1591,8 +1592,14 @@ public:
             auto t = ts_[pos_];
             auto x = xs_[pos_];
             if (t % 1000 == 0) {
+                u32 tsoff;
+                u32 size;
+                memcpy(body, &x, 8);
+                memcpy(&size, body, 4);
+                memcpy(&tsoff, body + 4, 4);
                 curr_.clear();
-                curr_.reserve(static_cast<size_t>(x));
+                curr_.reserve(static_cast<size_t>(size));
+                outts_ = t + tsoff;
             } else {
                 memcpy(body, &x, 8);
                 for (int i = 0; i < 8; i++) {
@@ -1600,7 +1607,7 @@ public:
                         curr_.push_back(body[i]);
                     }
                     else {
-                        *destts++ = (t / 1000) * 1000;
+                        *destts++ = outts_;
                         *destval++ = curr_;
                         size--;
                         outsz++;
@@ -3498,18 +3505,27 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value, boo
     return result;
 }
 
-NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, u8* blob, u32 size) {
+NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, const u8* blob, u32 size) {
     // Correct event serialization sequence:
     // TS       - 0         1           2           3
-    // value    - size      blob[0..7]  blob[8..15] blob[16, 23]...
-    // Timestamps will be rounded up to 1us.
+    // value    - head      blob[0..7]  blob[8..15] blob[16, 23]...
+    // Timestamps will be rounded up to 1us. The reminder will be stored in
+    // head element with the size.
     // It won't be possible to have events with nanosecond resolution.
     // Size of the event is limited by 999 8-byte elements.
     // If during write failure occured the reader partial write is possible so
     // reader should check for this by comparing size at TS[0] and real element
     // count.
+    // The head element contains size [0..999] and time offset [0, 999].
+    // Original timestamp can be restored using the time offset.
     aku_Timestamp basets = (ts / 1000) * 1000;
-    NBTreeAppendResult outres = append(basets++, size, false);
+    u32 tsrem = static_cast<u32>(ts - basets);  // Invariant: (ts - basets) < 1000
+    double head;
+    char buf[sizeof(head)];
+    memcpy(buf, &size, 4);
+    memcpy(buf + 4, &tsrem, 4);
+    memcpy(&head, buf, sizeof(head));
+    NBTreeAppendResult outres = append(basets++, head, false);
     if (outres == NBTreeAppendResult::FAIL_BAD_ID ||
         outres == NBTreeAppendResult::FAIL_BAD_VALUE ||
         outres == NBTreeAppendResult::FAIL_LATE_WRITE) {

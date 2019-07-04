@@ -2797,3 +2797,19 @@ void test_nbtree_summary(size_t nremoved, size_t nblocks) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_summary_0) {
     test_nbtree_summary(10, 20);
 }
+
+void test_nbtree_append_event(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    for (auto i = begin; i < end; i+=step) {
+        std::string event = "event-" + std::to_string(i);
+        collection->append(i, reinterpret_cast<const u8*>(event.data()), static_cast<u32>(event.size()));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_0) {
+    test_nbtree_append_event(1000001, 2000001, 20020);
+}
