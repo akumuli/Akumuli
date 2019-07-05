@@ -1566,6 +1566,7 @@ class BinaryDataIterator : public BinaryDataOperator {
     size_t pos_;
     size_t cap_;
     std::string curr_;
+    size_t curr_size_;
     aku_Timestamp outts_;
 public:
     BinaryDataIterator(std::unique_ptr<RealValuedOperator> base)
@@ -1586,11 +1587,13 @@ public:
             else if (status != AKU_SUCCESS) {
                 return std::make_pair(status, 0);
             }
+            pos_ = 0;
         }
-        while (pos_ < cap_) {
+        while (size && pos_ < cap_) {
             char body[8];
             auto t = ts_[pos_];
             auto x = xs_[pos_];
+            pos_++;
             if (t % 1000 == 0) {
                 u32 tsoff;
                 u32 size;
@@ -1600,10 +1603,11 @@ public:
                 curr_.clear();
                 curr_.reserve(static_cast<size_t>(size));
                 outts_ = t + tsoff;
+                curr_size_ = size;
             } else {
                 memcpy(body, &x, 8);
                 for (int i = 0; i < 8; i++) {
-                    if (curr_.capacity() > curr_.size()) {
+                    if (curr_size_ > curr_.size()) {
                         curr_.push_back(body[i]);
                     }
                     else {
@@ -1611,6 +1615,7 @@ public:
                         *destval++ = curr_;
                         size--;
                         outsz++;
+                        break;
                     }
                 }
             }
@@ -3521,7 +3526,7 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, const u8* blob, u
     aku_Timestamp basets = (ts / 1000) * 1000;
     u32 tsrem = static_cast<u32>(ts - basets);  // Invariant: (ts - basets) < 1000
     double head;
-    char buf[sizeof(head)];
+    char buf[sizeof(head)] = {};
     memcpy(buf, &size, 4);
     memcpy(buf + 4, &tsrem, 4);
     memcpy(&head, buf, sizeof(head));
