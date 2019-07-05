@@ -2860,10 +2860,20 @@ void test_nbtree_append_event(aku_Timestamp begin,
 
 BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_0) {
     std::vector<aku_Timestamp> from = {
-        1100000, 1300000, 1300000, 100, //2200000,
+        1100000, 1300000, 1300000, 100,
     };
     std::vector<aku_Timestamp> to = {
-        2100000, 2300000, 4000001, 2100000, //1200000,
+        2100000, 2300000, 4000001, 2100000,
+    };
+    test_nbtree_append_event(1000001, 3000001, 20020, from, to);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_1) {
+    std::vector<aku_Timestamp> from = {
+        2100000, 2300000, 4000001, 2100000,
+    };
+    std::vector<aku_Timestamp> to = {
+        1100000, 1300000, 1300000, 100,
     };
     test_nbtree_append_event(1000001, 3000001, 20020, from, to);
 }

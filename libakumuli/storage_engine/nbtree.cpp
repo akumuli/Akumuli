@@ -1588,6 +1588,17 @@ public:
                 return std::make_pair(status, 0);
             }
             pos_ = 0;
+            if (get_direction() == Direction::BACKWARD) {
+                // Rotate elements
+                u32 begin = 0;
+                for (u32 end = 0; end < cap_; end++) {
+                    if (ts_.at(end) % 1000 == 0) {
+                        std::reverse(xs_.begin() + begin, xs_.begin() + end + 1);
+                        std::reverse(ts_.begin() + begin, ts_.begin() + end + 1);
+                        begin = end + 1;
+                    }
+                }
+            }
         }
         while (size && pos_ < cap_) {
             char body[8];
