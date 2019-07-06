@@ -146,7 +146,15 @@ NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<Logi
     auto it = columns_.find(id);
     if (it != columns_.end()) {
         auto tree = it->second;
-        auto res = tree->append(sample.timestamp, sample.payload.float64);
+        NBTreeAppendResult res;
+        if (AKU_LIKELY(sample.payload.type == AKU_PAYLOAD_FLOAT)) {
+            res = tree->append(sample.timestamp, sample.payload.float64);
+        }
+        else if (sample.payload.type == AKU_PAYLOAD_EVENT) {
+            u32 sz = sample.payload.size - sizeof(aku_Sample);
+            u8 const* pdata = reinterpret_cast<u8 const*>(sample.payload.data);
+            res = tree->append(sample.timestamp, pdata, sz);
+        }
         if (res == NBTreeAppendResult::OK_FLUSH_NEEDED) {
             auto tmp = tree->get_roots();
             rescue_points->swap(tmp);
@@ -183,21 +191,37 @@ CStoreSession::CStoreSession(std::shared_ptr<ColumnStore> registry)
 }
 
 NBTreeAppendResult CStoreSession::write(aku_Sample const& sample, std::vector<LogicAddr> *rescue_points) {
-    if (AKU_UNLIKELY(sample.payload.type != AKU_PAYLOAD_FLOAT)) {
-        return NBTreeAppendResult::FAIL_BAD_VALUE;
-    }
-    // Cache lookup
-    auto it = cache_.find(sample.paramid);
-    if (it != cache_.end()) {
-        auto res = it->second->append(sample.timestamp, sample.payload.float64);
-        if (res == NBTreeAppendResult::OK_FLUSH_NEEDED) {
-            auto tmp = it->second->get_roots();
-            rescue_points->swap(tmp);
+    if (AKU_LIKELY(sample.payload.type == AKU_PAYLOAD_FLOAT)) {
+        // Cache lookup
+        auto it = cache_.find(sample.paramid);
+        if (it != cache_.end()) {
+            auto res = it->second->append(sample.timestamp, sample.payload.float64);
+            if (res == NBTreeAppendResult::OK_FLUSH_NEEDED) {
+                auto tmp = it->second->get_roots();
+                rescue_points->swap(tmp);
+            }
+            return res;
         }
-        return res;
+        // Cache miss - access global registry
+        return cstore_->write(sample, rescue_points, &cache_);
     }
-    // Cache miss - access global registry
-    return cstore_->write(sample, rescue_points, &cache_);
+    else if (sample.payload.type == AKU_PAYLOAD_EVENT) {
+        // Unpack event fields
+        u32 sz = sample.payload.size - sizeof(aku_Sample);
+        u8 const* pdata = reinterpret_cast<u8 const*>(sample.payload.data);
+        // Cache lookup
+        auto it = cache_.find(sample.paramid);
+        if (it != cache_.end()) {
+            auto res = it->second->append(sample.timestamp, pdata, sz);
+            if (res == NBTreeAppendResult::OK_FLUSH_NEEDED) {
+                auto tmp = it->second->get_roots();
+                rescue_points->swap(tmp);
+            }
+            return res;
+        }
+        return cstore_->write(sample, rescue_points, &cache_);
+    }
+    return NBTreeAppendResult::FAIL_BAD_VALUE;
 }
 
 void CStoreSession::close() {

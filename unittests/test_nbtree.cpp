@@ -2897,3 +2897,27 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_3) {
     };
     test_nbtree_append_event(1000001, 3000001, 20020, from, to);
 }
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_4) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    u8 data;
+    auto outres = collection->append(1000000, &data, 0);
+    BOOST_REQUIRE(outres == NBTreeAppendResult::FAIL_BAD_VALUE);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_5) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    u8 data = 1;
+    auto outres = collection->append(1000000, &data, 1);
+    BOOST_REQUIRE(outres == NBTreeAppendResult::OK);
+    outres = collection->append(1000010, &data, 1);
+    BOOST_REQUIRE(outres == NBTreeAppendResult::FAIL_LATE_WRITE);
+}

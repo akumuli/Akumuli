@@ -66,6 +66,7 @@ typedef struct {
                        = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
         FLOAT_BIT      = 1 << 4,  /** scalar type */
         TUPLE_BIT      = 1 << 5,  /** tuple type */
+        EVENT_BIT      = 1 << 6,  /** event type */
         SAX_WORD       = 1 << 10, /** indicates that SAX word is stored in extra payload */
     };
     u16 type;
@@ -81,6 +82,7 @@ typedef struct {
 
 #define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::FLOAT_BIT)
 #define AKU_PAYLOAD_TUPLE (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::TUPLE_BIT)
+#define AKU_PAYLOAD_EVENT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::EVENT_BIT)
 #define AKU_PAYLOAD_NONE  (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT)
 
 //! Cursor result type
