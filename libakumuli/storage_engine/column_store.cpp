@@ -146,7 +146,7 @@ NBTreeAppendResult ColumnStore::write(aku_Sample const& sample, std::vector<Logi
     auto it = columns_.find(id);
     if (it != columns_.end()) {
         auto tree = it->second;
-        NBTreeAppendResult res;
+        NBTreeAppendResult res = NBTreeAppendResult::OK;
         if (AKU_LIKELY(sample.payload.type == AKU_PAYLOAD_FLOAT)) {
             res = tree->append(sample.timestamp, sample.payload.float64);
         }

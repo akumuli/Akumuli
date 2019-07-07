@@ -1344,6 +1344,12 @@ std::tuple<aku_Status, std::string>
     case QueryKind::SELECT_META:
         Logger::msg(AKU_LOG_ERROR, "Metadata query is not supported");
         return std::make_tuple(AKU_EBAD_ARG, "Metadata query is not supported");
+    case QueryKind::SELECT_EVENTS:
+        std::tie(status, *req, error_msg) = QueryParser::parse_select_events_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, error_msg.data());
+        }
+        break;
     case QueryKind::AGGREGATE:
         std::tie(status, *req, error_msg) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
         if (status != AKU_SUCCESS) {

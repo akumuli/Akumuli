@@ -25,6 +25,8 @@ struct ProcessingPrelude {
     virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) = 0;
     //! Get result of the processing step
     virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) = 0;
+    //! Get result of the processing step
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<BinaryDataOperator>>* dest) = 0;
 };
 
 /**
@@ -77,8 +79,46 @@ struct ScanProcessingStep : ProcessingPrelude {
     virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
         return AKU_ENO_DATA;
     }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<BinaryDataOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
 };
 
+struct ScanEventsProcessingStep : ProcessingPrelude {
+    std::vector<std::unique_ptr<BinaryDataOperator>> scanlist_;
+    aku_Timestamp begin_;
+    aku_Timestamp end_;
+    std::vector<aku_ParamId> ids_;
+
+    template<class T>
+    ScanEventsProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
+        : begin_(begin)
+        , end_(end)
+        , ids_(std::forward<T>(t))
+    {
+    }
+
+    virtual aku_Status apply(const ColumnStore& cstore) {
+        return cstore.scan_events(ids_, begin_, end_, &scanlist_);
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<BinaryDataOperator>>* dest) {
+        if (scanlist_.empty()) {
+            return AKU_ENO_DATA;
+        }
+        *dest = std::move(scanlist_);
+        return AKU_SUCCESS;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
+};
 
 struct FilterProcessingStep : ProcessingPrelude {
     std::vector<std::unique_ptr<RealValuedOperator>> scanlist_;
@@ -119,6 +159,10 @@ struct FilterProcessingStep : ProcessingPrelude {
     virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
         return AKU_ENO_DATA;
     }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<BinaryDataOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
 };
 
 struct AggregateProcessingStep : ProcessingPrelude {
@@ -149,6 +193,10 @@ struct AggregateProcessingStep : ProcessingPrelude {
         }
         *dest = std::move(agglist_);
         return AKU_SUCCESS;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<BinaryDataOperator>>* dest) {
+        return AKU_ENO_DATA;
     }
 };
 
@@ -183,6 +231,10 @@ struct GroupAggregateProcessingStep : ProcessingPrelude {
         }
         *dest = std::move(agglist_);
         return AKU_SUCCESS;
+    }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<BinaryDataOperator>>* dest) {
+        return AKU_ENO_DATA;
     }
 };
 
@@ -227,6 +279,10 @@ struct GroupAggregateFilterProcessingStep : ProcessingPrelude {
         *dest = std::move(agglist_);
         return AKU_SUCCESS;
     }
+
+    virtual aku_Status extract_result(std::vector<std::unique_ptr<BinaryDataOperator>>* dest) {
+        return AKU_ENO_DATA;
+    }
 };
 
 
@@ -234,11 +290,28 @@ struct GroupAggregateFilterProcessingStep : ProcessingPrelude {
 //              Tier-2              //
 // -------------------------------- //
 
+namespace detail {
+
+template<class Order, class OperatorT>
+struct MergeMaterializerTraits;
+
+template<class Order>
+struct MergeMaterializerTraits<Order, RealValuedOperator> {
+    typedef MergeMaterializer<Order> Materializer;
+};
+
+template<class Order>
+struct MergeMaterializerTraits<Order, BinaryDataOperator> {
+    typedef MergeEventMaterializer<Order> Materializer;
+};
+
+}  // namespace detail
+
 /**
  * Merge several series (order by series).
  * Used in scan query.
  */
-template<OrderBy order>
+template<OrderBy order, class OperatorT=RealValuedOperator>
 struct MergeBy : MaterializationStep {
     std::vector<aku_ParamId> ids_;
     std::unique_ptr<ColumnMaterializer> mat_;
@@ -250,15 +323,17 @@ struct MergeBy : MaterializationStep {
     }
 
     aku_Status apply(ProcessingPrelude* prelude) {
-        std::vector<std::unique_ptr<RealValuedOperator>> iters;
+        std::vector<std::unique_ptr<OperatorT>> iters;
         auto status = prelude->extract_result(&iters);
         if (status != AKU_SUCCESS) {
             return status;
         }
         if (order == OrderBy::SERIES) {
-            mat_.reset(new MergeMaterializer<SeriesOrder>(std::move(ids_), std::move(iters)));
+            typedef typename detail::MergeMaterializerTraits<SeriesOrder, OperatorT>::Materializer Merger;
+            mat_.reset(new Merger(std::move(ids_), std::move(iters)));
         } else {
-            mat_.reset(new MergeMaterializer<TimeOrder>(std::move(ids_), std::move(iters)));
+            typedef typename detail::MergeMaterializerTraits<TimeOrder, OperatorT>::Materializer Merger;
+            mat_.reset(new Merger(std::move(ids_), std::move(iters)));
         }
         return AKU_SUCCESS;
     }
@@ -272,6 +347,24 @@ struct MergeBy : MaterializationStep {
     }
 };
 
+namespace detail {
+
+template<class OperatorT>
+struct ChainMaterializerTraits;
+
+template<>
+struct ChainMaterializerTraits<RealValuedOperator> {
+    typedef ChainMaterializer Materializer;
+};
+
+template<>
+struct ChainMaterializerTraits<BinaryDataOperator> {
+    typedef EventChainMaterializer Materializer;
+};
+
+}  // namespace detail
+
+template<class OperatorT=RealValuedOperator>
 struct Chain : MaterializationStep {
     std::vector<aku_ParamId> ids_;
     std::unique_ptr<ColumnMaterializer> mat_;
@@ -283,12 +376,13 @@ struct Chain : MaterializationStep {
     }
 
     aku_Status apply(ProcessingPrelude *prelude) {
-        std::vector<std::unique_ptr<RealValuedOperator>> iters;
+        std::vector<std::unique_ptr<OperatorT>> iters;
         auto status = prelude->extract_result(&iters);
         if (status != AKU_SUCCESS) {
             return status;
         }
-        mat_.reset(new ChainMaterializer(std::move(ids_), std::move(iters)));
+        typedef typename detail::ChainMaterializerTraits<OperatorT>::Materializer Materializer;
+        mat_.reset(new Materializer(std::move(ids_), std::move(iters)));
         return AKU_SUCCESS;
     }
 
@@ -862,9 +956,60 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_query_plan(Resha
     } else {
         auto ids = req.select.columns.at(0).ids;
         if (req.order_by == OrderBy::SERIES) {
-            t2stage.reset(new Chain(std::move(ids)));
+            t2stage.reset(new Chain<>(std::move(ids)));
         } else {
             t2stage.reset(new MergeBy<OrderBy::TIME>(std::move(ids)));
+        }
+    }
+
+    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_events_query_plan(ReshapeRequest const& req) {
+    // Hardwired query plan for scan query
+    // Tier1
+    // - List of range scan/filter operators
+    // Tier2
+    // - If group-by is enabled:
+    //   - Transform ids and matcher (generate new names)
+    //   - Add merge materialization step (series or time order, depending on the
+    //     order-by clause.
+    // - Otherwise
+    //   - If oreder-by is series add chain materialization step.
+    //   - Otherwise add merge materializer.
+
+    std::unique_ptr<IQueryPlan> result;
+
+    if (req.agg.enabled || req.select.columns.size() != 1) {
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    std::unique_ptr<ProcessingPrelude> t1stage;
+    t1stage.reset(new ScanEventsProcessingStep  (req.select.begin,
+                                                 req.select.end,
+                                                 req.select.columns.at(0).ids));
+
+    std::unique_ptr<MaterializationStep> t2stage;
+    if (req.group_by.enabled) {
+        std::vector<aku_ParamId> ids;
+        for(auto id: req.select.columns.at(0).ids) {
+            auto it = req.group_by.transient_map.find(id);
+            if (it != req.group_by.transient_map.end()) {
+                ids.push_back(it->second);
+            }
+        }
+        if (req.order_by == OrderBy::SERIES) {
+            t2stage.reset(new MergeBy<OrderBy::SERIES, BinaryDataOperator>(std::move(ids)));
+        } else {
+            t2stage.reset(new MergeBy<OrderBy::TIME, BinaryDataOperator>(std::move(ids)));
+        }
+    } else {
+        auto ids = req.select.columns.at(0).ids;
+        if (req.order_by == OrderBy::SERIES) {
+            t2stage.reset(new Chain<BinaryDataOperator>(std::move(ids)));
+        } else {
+            t2stage.reset(new MergeBy<OrderBy::TIME, BinaryDataOperator>(std::move(ids)));
         }
     }
 
@@ -1034,7 +1179,11 @@ std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> QueryPlanBuilder::create(con
     } else if (req.agg.enabled == false && req.select.columns.size() > 1) {
         // Join query
         return join_query_plan(req);
+    } else if (req.select.events) {
+        // Select events
+        return scan_events_query_plan(req);
     }
+    // Select metrics
     return scan_query_plan(req);
 }
 

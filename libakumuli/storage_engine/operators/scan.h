@@ -52,4 +52,20 @@ public:
     virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size);
 };
 
+/**
+ * Materializes list of event columns by chaining them
+ */
+class EventChainMaterializer : public ColumnMaterializer {
+    std::vector<std::unique_ptr<BinaryDataOperator>> iters_;
+    std::vector<aku_ParamId> ids_;
+    size_t pos_;
+    bool available_;
+    std::string curr_;
+    aku_ParamId curr_id_;
+    aku_Timestamp curr_ts_;
+public:
+    EventChainMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<BinaryDataOperator>>&& it);
+    virtual std::tuple<aku_Status, size_t> read(u8 *dest, size_t size);
+};
+
 }}  // namespace
