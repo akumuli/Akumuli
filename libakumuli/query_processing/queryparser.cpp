@@ -330,7 +330,7 @@ static std::tuple<aku_Status, std::vector<std::string>, ErrorMsg>
             auto value = item.second.get_value_optional<std::string>();
             if (value) {
                 auto str = *value;
-                if (!str.empty() && str.front() == '!') {
+                if (!str.empty() && str.front() != '!') {
                     result.push_back(str);
                 } else {
                     return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Metric name can't be empty or start with '!' symbol");
@@ -358,7 +358,7 @@ static std::tuple<aku_Status, std::vector<std::string>, std::vector<std::string>
         for (auto kv: *aggregate) {
             auto metric_name = kv.first;
             auto func = kv.second.get_value<std::string>("count");
-            if (!metric_name.empty() && metric_name.front() == '!') {
+            if (!metric_name.empty() && metric_name.front() != '!') {
                 metrics.push_back(metric_name);
             } else {
                 return std::make_tuple(AKU_EQUERY_PARSING_ERROR, EMPTY, EMPTY, "Metric name can't be empty or start with '!' symbol");
