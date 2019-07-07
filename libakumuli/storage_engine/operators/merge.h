@@ -11,10 +11,10 @@ namespace Akumuli {
 namespace StorageEngine {
 
 
-template<int dir>  // 0 - forward, 1 - backward
-struct TimeOrder {
+template<int dir, class ValueT>  // 0 - forward, 1 - backward
+struct TimeOrderImpl {
     typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
-    typedef std::tuple<KeyType, double, u32> HeapItem;
+    typedef std::tuple<KeyType, ValueT, u32> HeapItem;
     std::greater<KeyType> greater_;
     std::less<KeyType> less_;
 
@@ -25,6 +25,12 @@ struct TimeOrder {
         return less_(std::get<0>(lhs), std::get<0>(rhs));
     }
 };
+
+template<int dir>
+using TimeOrder = TimeOrderImpl<dir, double>;
+
+template<int dir>
+using EventTimeOrder = TimeOrderImpl<dir, std::string>;
 
 
 /**
@@ -45,10 +51,10 @@ struct MergeJoinOrder {
 };
 
 
-template<int dir>  // 0 - forward, 1 - backward
-struct SeriesOrder {
+template<int dir, class ValueT>  // 0 - forward, 1 - backward
+struct SeriesOrderImpl {
     typedef std::tuple<aku_Timestamp, aku_ParamId> KeyType;
-    typedef std::tuple<KeyType, double, u32> HeapItem;
+    typedef std::tuple<KeyType, ValueT, u32> HeapItem;
     typedef std::tuple<aku_ParamId, aku_Timestamp> InvKeyType;
     std::greater<InvKeyType> greater_;
     std::less<InvKeyType> less_;
@@ -64,6 +70,13 @@ struct SeriesOrder {
         return less_(ilhs, irhs);
     }
 };
+
+
+template<int dir>
+using SeriesOrder = SeriesOrderImpl<dir, double>;
+
+template<int dir>
+using EventSeriesOrder = SeriesOrderImpl<dir, std::string>;
 
 
 template<template <int dir> class CmpPred, bool IsStable=false>
@@ -270,7 +283,7 @@ struct MergeEventMaterializer : ColumnMaterializer {
             return std::make_tuple(ts.at(pos), id);
         }
 
-        double top_value() const {
+        std::string top_value() const {
             return xs.at(pos);
         }
     };
@@ -351,7 +364,7 @@ struct MergeEventMaterializer : ColumnMaterializer {
 
             // Produce sample
 
-            const std::string& evt = std::get<VALUE>(item);
+            std::string const& evt = std::get<VALUE>(item);
             // Check size
             u16 size_required = sizeof(aku_Sample) + evt.size();
 

@@ -292,17 +292,27 @@ struct GroupAggregateFilterProcessingStep : ProcessingPrelude {
 
 namespace detail {
 
-template<class Order, class OperatorT>
+template<OrderBy order, class OperatorT>
 struct MergeMaterializerTraits;
 
-template<class Order>
-struct MergeMaterializerTraits<Order, RealValuedOperator> {
-    typedef MergeMaterializer<Order> Materializer;
+template<>
+struct MergeMaterializerTraits<OrderBy::SERIES, RealValuedOperator> {
+    typedef MergeMaterializer<SeriesOrder> Materializer;
 };
 
-template<class Order>
-struct MergeMaterializerTraits<Order, BinaryDataOperator> {
-    typedef MergeEventMaterializer<Order> Materializer;
+template<>
+struct MergeMaterializerTraits<OrderBy::TIME, RealValuedOperator> {
+    typedef MergeMaterializer<TimeOrder> Materializer;
+};
+
+template<>
+struct MergeMaterializerTraits<OrderBy::SERIES, BinaryDataOperator> {
+    typedef MergeEventMaterializer<EventSeriesOrder> Materializer;
+};
+
+template<>
+struct MergeMaterializerTraits<OrderBy::TIME, BinaryDataOperator> {
+    typedef MergeEventMaterializer<EventTimeOrder> Materializer;
 };
 
 }  // namespace detail
@@ -328,13 +338,8 @@ struct MergeBy : MaterializationStep {
         if (status != AKU_SUCCESS) {
             return status;
         }
-        if (order == OrderBy::SERIES) {
-            typedef typename detail::MergeMaterializerTraits<SeriesOrder, OperatorT>::Materializer Merger;
-            mat_.reset(new Merger(std::move(ids_), std::move(iters)));
-        } else {
-            typedef typename detail::MergeMaterializerTraits<TimeOrder, OperatorT>::Materializer Merger;
-            mat_.reset(new Merger(std::move(ids_), std::move(iters)));
-        }
+        typedef typename detail::MergeMaterializerTraits<order, OperatorT>::Materializer Merger;
+        mat_.reset(new Merger(std::move(ids_), std::move(iters)));
         return AKU_SUCCESS;
     }
 
