@@ -286,6 +286,17 @@ bool is_meta_query(std::string name) {
     return false;
 }
 
+static std::tuple<aku_Status, std::string, ErrorMsg> parse_search_select_stmt(boost::property_tree::ptree const& ptree) {
+    // This should allow to search both metric events or all (if empty string is passed)
+    auto select = ptree.get_child_optional("select");
+    if (select && select->empty()) {
+        // select query
+        auto str = select->get_value<std::string>("");
+        return std::make_tuple(AKU_SUCCESS, str, ErrorMsg());
+    }
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "Query object doesn't have a 'select' field");
+}
+
 static std::tuple<aku_Status, std::string, ErrorMsg> parse_select_stmt(boost::property_tree::ptree const& ptree) {
     auto select = ptree.get_child_optional("select");
     if (select && select->empty()) {
@@ -1018,7 +1029,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>, ErrorMsg>
         return std::make_tuple(status, ids, error);
     }
     std::string name;
-    std::tie(status, name, error) = parse_select_stmt(ptree);
+    std::tie(status, name, error) = parse_search_select_stmt(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, ids, error);
     }
