@@ -228,7 +228,7 @@ class RESPProtocolParser {
 
     bool parse_dict(RESPStream& stream);
     bool parse_timestamp(RESPStream& stream, aku_Sample& sample);
-    bool parse_values(RESPStream& stream, double* values, int nvalues);
+    bool parse_values(RESPStream& stream, const aku_ParamId *ids, double* values, int nvalues);
     int parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues);
     /**
      * @brief Cache series id mapping

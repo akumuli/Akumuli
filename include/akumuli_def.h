@@ -112,6 +112,7 @@ typedef struct {
 //! Minimal possible TTL
 #define AKU_LIMITS_MIN_TTL 2
 #define AKU_LIMITS_MAX_ID 0xFFFFFFFFFFFFFFFDul
+#define AKU_EVENT_ID_BIT  0x8000000000000000ul
 //! Max number of tags in series name
 #define AKU_LIMITS_MAX_TAGS 32
 //! Longest possible series name

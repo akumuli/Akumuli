@@ -48,6 +48,10 @@ SeriesMatcher::SeriesMatcher(u64 starting_id)
 u64 SeriesMatcher::add(const char* begin, const char* end) {
     std::lock_guard<std::mutex> guard(mutex);
     auto id = series_id++;
+    if (*begin == '!') {
+        // Series name starts with ! which mean that we're dealing with event
+        id |= AKU_EVENT_ID_BIT;
+    }
     aku_Status status;
     StringT sname;
     std::tie(status, sname) = index.append(begin, end);

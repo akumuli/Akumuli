@@ -373,7 +373,7 @@ int RESPProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nval
     return rowwidth;
 }
 
-bool RESPProtocolParser::parse_values(RESPStream& stream, double* values, int nvalues) {
+bool RESPProtocolParser::parse_values(RESPStream& stream, aku_ParamId const* ids, double* values, int nvalues) {
     const size_t buflen = 64;
     Byte buf[buflen];
     int bytes_read;
@@ -429,8 +429,14 @@ bool RESPProtocolParser::parse_values(RESPStream& stream, double* values, int nv
     case RESPStream::STRING:
         // Single integer value returned
         if (nvalues == 1) {
-            if (!parse_string_value(0)) {
-                return false;
+            if (ids[0] & AKU_EVENT_ID_BIT == 0) {
+                if (!parse_string_value(0)) {
+                    return false;
+                }
+            }
+            else {
+                // TODO: parse event
+                throw "Not implemented";
             }
         } else {
             std::string msg;
@@ -458,29 +464,35 @@ bool RESPProtocolParser::parse_values(RESPStream& stream, double* values, int nv
         }
         for (int i = 0; i < arrsize; i++) {
             next = stream.next_type();
-            switch(next) {
-                case RESPStream::_AGAIN:
-                    return false;
-                case RESPStream::INTEGER:
-                    if (!parse_int_value(i)) {
+            if (ids[i] & AKU_EVENT_ID_BIT == 0) {
+                switch(next) {
+                    case RESPStream::_AGAIN:
                         return false;
+                    case RESPStream::INTEGER:
+                        if (!parse_int_value(i)) {
+                            return false;
+                        }
+                        break;
+                    case RESPStream::STRING:
+                        if (!parse_string_value(i)) {
+                            return false;
+                        }
+                        break;
+                    case RESPStream::ARRAY:
+                    case RESPStream::BULK_STR:
+                    case RESPStream::ERROR:
+                    case RESPStream::_BAD: {
+                        // Bad frame
+                        std::string msg;
+                        size_t pos;
+                        std::tie(msg, pos) = rdbuf_.get_error_context("unexpected parameter value format");
+                        BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                     }
-                    break;
-                case RESPStream::STRING:
-                    if (!parse_string_value(i)) {
-                        return false;
-                    }
-                    break;
-                case RESPStream::ARRAY:
-                case RESPStream::BULK_STR:
-                case RESPStream::ERROR:
-                case RESPStream::_BAD: {
-                    // Bad frame
-                    std::string msg;
-                    size_t pos;
-                    std::tie(msg, pos) = rdbuf_.get_error_context("unexpected parameter value format");
-                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
+            }
+            else {
+                // TODO: handle event
+                throw "Not implemented";
             }
         }
         break;
@@ -531,7 +543,7 @@ void RESPProtocolParser::worker() {
             rdbuf_.discard();
             return;
         }
-        success = parse_values(stream, values, rowwidth);
+        success = parse_values(stream, paramids, values, rowwidth);
         if (!success) {
             rdbuf_.discard();
             return;
