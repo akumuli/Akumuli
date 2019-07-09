@@ -373,7 +373,11 @@ int RESPProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nval
     return rowwidth;
 }
 
-bool RESPProtocolParser::parse_values(RESPStream& stream, aku_ParamId const* ids, double* values, int nvalues) {
+bool RESPProtocolParser::parse_values(RESPStream&        stream,
+                                      aku_ParamId const* ids,
+                                      double*            values,
+                                      std::string*       events,
+                                      int                nvalues) {
     const size_t buflen = 64;
     Byte buf[buflen];
     int bytes_read;
@@ -410,6 +414,20 @@ bool RESPProtocolParser::parse_values(RESPStream& stream, aku_ParamId const* ids
         }
         return true;
     };
+    auto parse_event_value = [&](int at) {
+        std::tie(success, bytes_read) = stream.read_string(buf, buflen);
+        if (!success) {
+            return false;
+        }
+        if (bytes_read < 0 || bytes_read >= AKU_LIMITS_MAX_EVENT_LEN) {
+            std::string msg;
+            size_t pos;
+            std::tie(msg, pos) = rdbuf_.get_error_context("event value is too big");
+            BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+        }
+        events[at].assign(buf, buf + bytes_read);
+        return true;
+    };
     auto next = stream.next_type();
     switch(next) {
     case RESPStream::_AGAIN:
@@ -435,8 +453,9 @@ bool RESPProtocolParser::parse_values(RESPStream& stream, aku_ParamId const* ids
                 }
             }
             else {
-                // TODO: parse event
-                throw "Not implemented";
+                if (!parse_event_value(0)) {
+                    return false;
+                }
             }
         } else {
             std::string msg;
@@ -489,10 +508,17 @@ bool RESPProtocolParser::parse_values(RESPStream& stream, aku_ParamId const* ids
                         BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                     }
                 }
-            }
-            else {
-                // TODO: handle event
-                throw "Not implemented";
+            } else {
+                if (next == RESPStream::STRING) {
+                    if (!parse_event_value(i)) {
+                        return false;
+                    }
+                } else {
+                    std::string msg;
+                    size_t pos;
+                    std::tie(msg, pos) = rdbuf_.get_error_context("unexpected event format");
+                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
+                }
             }
         }
         break;
@@ -512,8 +538,6 @@ bool RESPProtocolParser::parse_values(RESPStream& stream, aku_ParamId const* ids
 
 void RESPProtocolParser::worker() {
     // Buffer to read strings from
-    u64 paramids[AKU_LIMITS_MAX_ROW_WIDTH];
-    double values[AKU_LIMITS_MAX_ROW_WIDTH];
     int rowwidth = 0;
     // Data to read
     aku_Sample sample;
@@ -532,7 +556,7 @@ void RESPProtocolParser::worker() {
     while(true) {
         bool success;
         // read id
-        rowwidth = parse_ids(stream, paramids, AKU_LIMITS_MAX_ROW_WIDTH);
+        rowwidth = parse_ids(stream, paramids_, AKU_LIMITS_MAX_ROW_WIDTH);
         if (rowwidth < 0) {
             rdbuf_.discard();
             return;
@@ -543,7 +567,7 @@ void RESPProtocolParser::worker() {
             rdbuf_.discard();
             return;
         }
-        success = parse_values(stream, paramids, values, rowwidth);
+        success = parse_values(stream, paramids_, values_, events_, rowwidth);
         if (!success) {
             rdbuf_.discard();
             return;
@@ -555,12 +579,30 @@ void RESPProtocolParser::worker() {
         sample.payload.size = sizeof(aku_Sample);
         // Timestamp is initialized once and for all
         for (int i = 0; i < rowwidth; i++) {
-            sample.paramid = paramids[i];
-            sample.payload.float64 = values[i];
-            status = consumer_->write(sample);
-            // Message processed and frame can be removed (if possible)
-            if (status != AKU_SUCCESS) {
-                BOOST_THROW_EXCEPTION(DatabaseError(status));
+            if ((paramids_[i] & AKU_EVENT_ID_BIT) == 0) {
+                // Fast path
+                sample.paramid = paramids_[i];
+                sample.payload.float64 = values_[i];
+                status = consumer_->write(sample);
+                // Message processed and frame can be removed (if possible)
+                if (status != AKU_SUCCESS) {
+                    BOOST_THROW_EXCEPTION(DatabaseError(status));
+                }
+            }
+            else {
+                size_t len = events_[i].size() + sizeof(aku_Sample);
+                aku_Sample evt;
+                evt.payload.type = AKU_PAYLOAD_EVENT;
+                evt.payload.size = static_cast<u16>(len);  // len guaranteed to fit
+                evt.timestamp = sample.timestamp;
+                event_buf_.resize(len);
+                memcpy(event_buf_.data(), &evt, sizeof(aku_Sample));
+                memcpy(event_buf_.data() + sizeof(aku_Sample), events_[i].data(), events_[i].size());
+                status = consumer_->write(sample);
+                // Message processed and frame can be removed (if possible)
+                if (status != AKU_SUCCESS) {
+                    BOOST_THROW_EXCEPTION(DatabaseError(status));
+                }
             }
         }
     }
