@@ -429,7 +429,7 @@ bool RESPProtocolParser::parse_values(RESPStream& stream, aku_ParamId const* ids
     case RESPStream::STRING:
         // Single integer value returned
         if (nvalues == 1) {
-            if (ids[0] & AKU_EVENT_ID_BIT == 0) {
+            if ((ids[0] & AKU_EVENT_ID_BIT) == 0) {
                 if (!parse_string_value(0)) {
                     return false;
                 }
@@ -464,7 +464,7 @@ bool RESPProtocolParser::parse_values(RESPStream& stream, aku_ParamId const* ids
         }
         for (int i = 0; i < arrsize; i++) {
             next = stream.next_type();
-            if (ids[i] & AKU_EVENT_ID_BIT == 0) {
+            if ((ids[i] & AKU_EVENT_ID_BIT) == 0) {
                 switch(next) {
                     case RESPStream::_AGAIN:
                         return false;
