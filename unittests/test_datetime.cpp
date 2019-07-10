@@ -73,6 +73,6 @@ BOOST_AUTO_TEST_CASE(Test_string_to_duration_minutes) {
 
     const char* test_case = "111m";
     aku_Duration actual = DateTimeUtil::parse_duration(test_case, 4u);
-    aku_Duration expected = 111*60*1000000000ul;
+    aku_Duration expected = 111*60*1000000000ull;
     BOOST_REQUIRE_EQUAL(actual, expected);
 }
