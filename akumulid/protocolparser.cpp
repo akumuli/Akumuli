@@ -447,7 +447,7 @@ bool RESPProtocolParser::parse_values(RESPStream&        stream,
     case RESPStream::STRING:
         // Single integer value returned
         if (nvalues == 1) {
-            if ((ids[0] & AKU_EVENT_ID_BIT) == 0) {
+            if (static_cast<i64>(ids[0]) > 0) {
                 if (!parse_string_value(0)) {
                     return false;
                 }
@@ -483,7 +483,7 @@ bool RESPProtocolParser::parse_values(RESPStream&        stream,
         }
         for (int i = 0; i < arrsize; i++) {
             next = stream.next_type();
-            if ((ids[i] & AKU_EVENT_ID_BIT) == 0) {
+            if (static_cast<i64>(ids[i]) > 0) {
                 switch(next) {
                     case RESPStream::_AGAIN:
                         return false;
@@ -579,7 +579,7 @@ void RESPProtocolParser::worker() {
         sample.payload.size = sizeof(aku_Sample);
         // Timestamp is initialized once and for all
         for (int i = 0; i < rowwidth; i++) {
-            if ((paramids_[i] & AKU_EVENT_ID_BIT) == 0) {
+            if (static_cast<i64>(paramids_[i]) > 0) {
                 // Fast path
                 sample.paramid = paramids_[i];
                 sample.payload.float64 = values_[i];
@@ -595,10 +595,11 @@ void RESPProtocolParser::worker() {
                 evt.payload.type = AKU_PAYLOAD_EVENT;
                 evt.payload.size = static_cast<u16>(len);  // len guaranteed to fit
                 evt.timestamp = sample.timestamp;
+                evt.paramid = paramids_[i];
                 event_buf_.resize(len);
                 memcpy(event_buf_.data(), &evt, sizeof(aku_Sample));
                 memcpy(event_buf_.data() + sizeof(aku_Sample), events_[i].data(), events_[i].size());
-                status = consumer_->write(sample);
+                status = consumer_->write(*reinterpret_cast<aku_Sample const*>(event_buf_.data()));
                 // Message processed and frame can be removed (if possible)
                 if (status != AKU_SUCCESS) {
                     BOOST_THROW_EXCEPTION(DatabaseError(status));

@@ -113,7 +113,7 @@ struct MetadataStorage : VolumeRegistry {
     bool get_config_param(const std::string param_name, std::string* value);
 
     /** Read larges series id */
-    boost::optional<u64> get_prev_largest_id();
+    boost::optional<i64> get_prev_largest_id();
 
     aku_Status load_matcher_data(SeriesMatcherBase &matcher);
 

@@ -100,21 +100,24 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
     } else if (metric_.empty()) {
         // Case 2, metric not set.
         // get all ids
-        ids = matcher.get_all_ids();
+        auto sids = matcher.get_all_ids();
+        for (i64 id: sids) {
+            ids.push_back(static_cast<aku_ParamId>(id));
+        }
     } else {
         // Case 3, metric is set
         auto first_metric = metric_.front();
         IncludeMany2Many query(first_metric, tags_);
         auto search_results = matcher.search(query);
         for (auto tup: search_results) {
-            ids.push_back(std::get<2>(tup));
+            ids.push_back(static_cast<aku_ParamId>(std::get<2>(tup)));
         }
         if (metric_.size() > 1) {
             std::vector<std::string> tail(metric_.begin() + 1, metric_.end());
             std::vector<aku_ParamId> full(ids);
             for (auto metric: tail) {
                 for (auto id: ids) {
-                    StringT name = matcher.id2str(id);
+                    StringT name = matcher.id2str(static_cast<i64>(id));
                     if (name.second == 0) {
                         // This shouldn't happen but it can happen after memory corruption or data-race.
                         // Clearly indicates an error.
@@ -124,7 +127,8 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
                     std::string series_tags(name.first + first_metric.size(), name.first + name.second);
                     std::string alt_name = metric + series_tags;
                     auto sid = matcher.match(alt_name.data(), alt_name.data() + alt_name.size());
-                    full.push_back(sid);  // NOTE: sid (secondary id) can be = 0. This means that there is no such
+                    full.push_back(static_cast<aku_ParamId>(sid));
+                                          // NOTE: sid (secondary id) can be = 0. This means that there is no such
                                           // combination of metric and tags. Different strategies can be used to deal with
                                           // such cases. Query can leave this element of the tuple blank or discard it.
                 }
@@ -140,7 +144,10 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
     // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.
     if (metric_.empty()) {
         // Case 1, metric not set.
-        ids = matcher.get_all_ids();
+        auto sids = matcher.get_all_ids();
+        for (i64 id: sids) {
+            ids.push_back(static_cast<aku_ParamId>(id));
+        }
     } else {
         auto first_metric = metric_.front();
         if (tags_.empty()) {
@@ -150,7 +157,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
             std::string expression = regex.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
-                ids.push_back(std::get<2>(res));
+                ids.push_back(static_cast<aku_ParamId>(std::get<2>(res)));
             }
         } else {
             // Case 3, both metric and tags are set
@@ -173,7 +180,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
             std::string expression = regexp.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
-                ids.push_back(std::get<2>(res));
+                ids.push_back(static_cast<aku_ParamId>(std::get<2>(res)));
             }
         }
 
@@ -182,7 +189,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
             std::vector<aku_ParamId> full(ids);
             for (auto metric: tail) {
                 for (auto id: ids) {
-                    StringT name = matcher.id2str(id);
+                    StringT name = matcher.id2str(static_cast<i64>(id));
                     if (name.second == 0) {
                         // This shouldn't happen but it can happen after memory corruption or data-race.
                         // Clearly indicates an error.
@@ -192,7 +199,8 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
                     std::string series_tags(name.first + first_metric.size(), name.first + name.second);
                     std::string alt_name = metric + series_tags;
                     auto sid = matcher.match(alt_name.data(), alt_name.data() + alt_name.size());
-                    full.push_back(sid);  // NOTE: sid (secondary id) can be = 0. This means that there is no such
+                    full.push_back(static_cast<aku_ParamId>(sid));
+                                          // NOTE: sid (secondary id) can be = 0. This means that there is no such
                                           // combination of metric and tags. Different strategies can be used to deal with
                                           // such cases. Query can leave this element of the tuple blank or discard it.
                 }
@@ -218,7 +226,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(Pl
             std::string expression = regex.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
-                ids.push_back(std::get<2>(res));
+                ids.push_back(static_cast<aku_ParamId>(std::get<2>(res)));
             }
         } else {
             // Case 3, both metric and tags are set
@@ -241,7 +249,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(Pl
             std::string expression = regexp.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
-                ids.push_back(std::get<2>(res));
+                ids.push_back(static_cast<aku_ParamId>(std::get<2>(res)));
             }
         }
 
@@ -250,7 +258,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(Pl
             std::vector<aku_ParamId> full(ids);
             for (auto metric: tail) {
                 for (auto id: ids) {
-                    StringT name = matcher.id2str(id);
+                    StringT name = matcher.id2str(static_cast<i64>(id));
                     if (name.second == 0) {
                         // This shouldn't happen but it can happen after memory corruption or data-race.
                         // Clearly indicates an error.
