@@ -330,10 +330,10 @@ struct VByteStreamWriter {
         int fstlen = 8*sizeof(TVal);
         int sndlen = 8*sizeof(TVal);
         if (fst) {
-            fstlen = __builtin_clzl(fst);
+            fstlen = __builtin_clzll(fst);
         }
         if (snd) {
-            sndlen = __builtin_clzl(snd);
+            sndlen = __builtin_clzll(snd);
         }
         int fstctrl = sizeof(TVal) - fstlen / 8;  // value should be in 0-8 range
         int sndctrl = sizeof(TVal) - sndlen / 8;  // value should be in 0-8 range
@@ -440,7 +440,7 @@ struct VByteStreamWriter {
         if (cnt_ % 2 == 1) {
             int len = 64;
             if (prev_) {
-                len = __builtin_clzl(prev_);
+                len = __builtin_clzll(prev_);
             }
             int ctrl = 8 - len / 8;  // value should be in 0-8 range
             u8 ctrlword = static_cast<u8>(ctrl);
@@ -519,10 +519,10 @@ struct IOVecVByteStreamWriter {
         int fstlen = 8*sizeof(TVal);
         int sndlen = 8*sizeof(TVal);
         if (fst) {
-            fstlen = __builtin_clzl(fst);
+            fstlen = __builtin_clzll(fst);
         }
         if (snd) {
-            sndlen = __builtin_clzl(snd);
+            sndlen = __builtin_clzll(snd);
         }
         int fstctrl = sizeof(TVal) - fstlen / 8;  // value should be in 0-8 range
         int sndctrl = sizeof(TVal) - sndlen / 8;  // value should be in 0-8 range
@@ -628,7 +628,7 @@ struct IOVecVByteStreamWriter {
         if (cnt_ % 2 == 1) {
             int len = 64;
             if (prev_) {
-                len = __builtin_clzl(prev_);
+                len = __builtin_clzll(prev_);
             }
             int ctrl = 8 - len / 8;  // value should be in 0-8 range
             u8 ctrlword = static_cast<u8>(ctrl);
@@ -1073,8 +1073,8 @@ struct FcmStreamWriter {
         int trailing_bytes = 8;
 
         if (diff != 0) {
-            trailing_bytes = __builtin_ctzl(diff) / 8;
-            leading_bytes = __builtin_clzl(diff) / 8;
+            trailing_bytes = __builtin_ctzll(diff) / 8;
+            leading_bytes = __builtin_clzll(diff) / 8;
         } else {
             // Fast path for 0-diff values.
             // Flags 7 and 15 are interchangeable.
