@@ -131,6 +131,27 @@ struct CSVOutputFormatter : OutputFormatter {
             newline_required = true;
         }
 
+        if (sample.payload.type & aku_PData::EVENT_BIT) {
+            if (newline_required) {
+                // Add trailing ',' to the end
+                if (size < 1) {
+                    return nullptr;
+                }
+                begin[0] = ',';
+                begin += 1;
+                size  -= 1;
+            }
+            // Floating-point
+            len = sample.payload.size - sizeof(aku_Sample);
+            if (len >= size) {
+                return nullptr;
+            }
+            memcpy(begin, sample.payload.data, len);
+            begin += len;
+            size  -= len;
+            newline_required = true;
+        }
+
         if (sample.payload.type & aku_PData::TUPLE_BIT) {
             if (newline_required) {
                 // Add trailing ',' to the end
@@ -306,6 +327,17 @@ struct RESPOutputFormatter : OutputFormatter {
             if (len == size || len < 0) {
                 return nullptr;
             }
+            begin += len;
+            size  -= len;
+        }
+
+        if (sample.payload.type & aku_PData::EVENT_BIT) {
+            // Floating-point
+            len = sample.payload.size - sizeof(aku_Sample);
+            if (len >= size) {
+                return nullptr;
+            }
+            memcpy(begin, sample.payload.data, len);
             begin += len;
             size  -= len;
         }
