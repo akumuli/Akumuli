@@ -375,10 +375,10 @@ struct MergeEventMaterializer : ColumnMaterializer {
             sample.payload.size = size_required;
             sample.payload.float64 = 0;
             if (size - outpos >= size_required) {
-                memcpy(dest + outpos, &sample, sizeof(sample));
-                outpos += sizeof(sample);
-                memcpy(dest + outpos, evt.data(), evt.size());
-                outpos += evt.size();
+                auto psample = reinterpret_cast<aku_Sample*>(dest + outpos);
+                memcpy(psample, &sample, sizeof(sample));
+                memcpy(psample->payload.data, evt.data(), evt.size());
+                outpos += size_required;
             } else {
                 // Output buffer is fully consumed
                 return std::make_tuple(AKU_SUCCESS, size);

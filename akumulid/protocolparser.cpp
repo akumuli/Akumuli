@@ -597,9 +597,10 @@ void RESPProtocolParser::worker() {
                 evt.timestamp = sample.timestamp;
                 evt.paramid = paramids_[i];
                 event_buf_.resize(len);
-                memcpy(event_buf_.data(), &evt, sizeof(aku_Sample));
-                memcpy(event_buf_.data() + sizeof(aku_Sample), events_[i].data(), events_[i].size());
-                status = consumer_->write(*reinterpret_cast<aku_Sample const*>(event_buf_.data()));
+                auto pevt = reinterpret_cast<aku_Sample*>(event_buf_.data());
+                memcpy(pevt, &evt, sizeof(evt));
+                memcpy(pevt->payload.data, events_[i].data(), events_[i].size());
+                status = consumer_->write(*pevt);
                 // Message processed and frame can be removed (if possible)
                 if (status != AKU_SUCCESS) {
                     BOOST_THROW_EXCEPTION(DatabaseError(status));

@@ -334,12 +334,17 @@ struct RESPOutputFormatter : OutputFormatter {
         if (sample.payload.type & aku_PData::EVENT_BIT) {
             // Floating-point
             len = sample.payload.size - sizeof(aku_Sample);
-            if (len >= size) {
+            if ((len + 3) > size) {
                 return nullptr;
             }
+            *begin++ = '+';
+            size--;
             memcpy(begin, sample.payload.data, len);
             begin += len;
             size  -= len;
+            *begin++ = '\r';
+            *begin++ = '\n';
+            size -= 2;
         }
 
         if (sample.payload.type & aku_PData::TUPLE_BIT) {
