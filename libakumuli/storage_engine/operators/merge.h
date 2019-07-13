@@ -2,6 +2,9 @@
 
 #include "operator.h"
 
+// TODO:remove
+#include "datetime.h"
+
 #include <boost/heap/skew_heap.hpp>
 #include <boost/range.hpp>
 #include <boost/range/iterator_range.hpp>
@@ -211,7 +214,7 @@ struct MergeMaterializer : ColumnMaterializer {
                 outpos += sizeof(sample);
             } else {
                 // Output buffer is fully consumed
-                return std::make_tuple(AKU_SUCCESS, size);
+                return std::make_tuple(AKU_SUCCESS, outpos);
             }
             heap.pop();
             ranges_[index].advance();
@@ -368,6 +371,12 @@ struct MergeEventMaterializer : ColumnMaterializer {
             // Check size
             u16 size_required = sizeof(aku_Sample) + evt.size();
 
+            // TODO: remove
+            std::cout << "Event: " << evt << std::endl;
+            char tmpbuf[100];
+            int tmplen = DateTimeUtil::to_iso_string(std::get<TIME>(point), tmpbuf, 100);
+            std::cout << "Time : " << std::string(tmpbuf, tmpbuf+tmplen) << ", " << std::get<TIME>(point) << std::endl;
+
             aku_Sample sample;
             sample.paramid = std::get<ID>(point);
             sample.timestamp = std::get<TIME>(point);
@@ -379,9 +388,11 @@ struct MergeEventMaterializer : ColumnMaterializer {
                 memcpy(psample, &sample, sizeof(sample));
                 memcpy(psample->payload.data, evt.data(), evt.size());
                 outpos += size_required;
+                std::cout << "produce" << std::endl;
             } else {
+                std::cout << "ditch" << std::endl;
                 // Output buffer is fully consumed
-                return std::make_tuple(AKU_SUCCESS, size);
+                return std::make_tuple(AKU_SUCCESS, outpos);
             }
             heap.pop();
             ranges_[index].advance();
