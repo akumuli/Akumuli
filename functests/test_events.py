@@ -32,6 +32,7 @@ def test_select_events_forward(dtstart, delta, N):
                 "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
                 "to": end.strftime('%Y%m%dT%H%M%S.%f'),
             },
+            "order-by": "time",
             "output": { "format": "csv" }
     }
     queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
@@ -39,7 +40,6 @@ def test_select_events_forward(dtstart, delta, N):
     iterations = 0
     for line in response:
         try:
-            print(line)
             expts, expname = allevents[iterations]
             columns = line.split(',')
             timestamp = att.parse_timestamp(columns[1].strip())
@@ -57,8 +57,8 @@ def test_select_events_forward(dtstart, delta, N):
         except:
             print("Error at line: {0}".format(line))
             raise
-    if iterations == 0:
-        raise ValueError("Results incomplete")
+    if iterations != len(allevents):
+        raise ValueError("Results incomplete, {0} received, {1} expected".format(iterations, len(allevents)))
 
 
 def main(path):
@@ -79,23 +79,28 @@ def main(path):
         dt = datetime.datetime.utcnow().replace(hour=0, minute=0, second=10, microsecond=0)
         delta = datetime.timedelta(seconds=1)
         nmsgs = 1000
-        print("Sending {0} messages through TCP...".format(nmsgs))
         snames = [
             '!foo A=1 B=1',
             '!foo A=1 B=2',
             '!foo A=2 B=1',
             '!foo A=2 B=2',
         ]
+        print("Sending {0} messages through TCP...".format(nmsgs*len(snames)))
+        cnt = 0
         timestamp = dt
         for it in range(0, nmsgs):
             for sname in snames:
                 timestr = timestamp.strftime('+%Y%m%dT%H%M%S.%f')
-                event = "event {0} for {1} generated".format(sname, timestr)
+                event = "{0} event {1} for {2} generated".format(cnt, sname, timestr)
                 msg = "+{0}\r\n+{1}\r\n+{2}\r\n".format(sname, timestr, event[:it + 1])
                 allevents.append((timestamp, event[:it + 1]))
                 chan.send(msg)
+                cnt += 1
                 timestamp = timestamp + delta
         time.sleep(5)  # wait untill all messagess will be processed
+        print(cnt)
+        print(dt)
+        print(timestamp)
 
         test_select_events_forward(dt, delta, nmsgs)
         #test_select_events_backward(dt, nmsgs)

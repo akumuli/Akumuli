@@ -1559,7 +1559,7 @@ std::tuple<aku_Status, size_t> NBTreeSBlockCandlesticsIter::read(aku_Timestamp *
 class BinaryDataIterator : public BinaryDataOperator {
     std::unique_ptr<RealValuedOperator> base_;
     enum {
-        BUF_SIZE = 64
+        BUF_SIZE = 1 + (AKU_LIMITS_MAX_EVENT_LEN / 8)
     };
     std::array<aku_Timestamp, BUF_SIZE> ts_;
     std::array<double, BUF_SIZE> xs_;
@@ -1581,8 +1581,10 @@ public:
         if (pos_ == cap_) {
             aku_Status status;
             std::tie(status, cap_) = base_->read(ts_.data(), xs_.data(), BUF_SIZE);
-            if (status == AKU_ENO_DATA && cap_ == 0) {
-                return std::make_pair(status, 0);
+            if (status == AKU_ENO_DATA) {
+                if (cap_ == 0) {
+                    return std::make_pair(status, 0);
+                }
             }
             else if (status != AKU_SUCCESS) {
                 return std::make_pair(status, 0);
@@ -1617,17 +1619,18 @@ public:
                 curr_size_ = size;
             } else {
                 memcpy(body, &x, 8);
-                for (int i = 0; i < 8; i++) {
+                int niter = static_cast<int>(std::min(sizeof(body), curr_size_ - curr_.size()));
+                for (int i = 0; i < niter; i++) {
                     if (curr_size_ > curr_.size()) {
                         curr_.push_back(body[i]);
                     }
-                    else {
-                        *destts++ = outts_;
-                        *destval++ = curr_;
-                        size--;
-                        outsz++;
-                        break;
-                    }
+                }
+                if (curr_size_ == curr_.size()) {
+                    *destts++ = outts_;
+                    *destval++ = curr_;
+                    size--;
+                    outsz++;
+
                 }
             }
         }
