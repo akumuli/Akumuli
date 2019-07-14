@@ -2,9 +2,6 @@
 
 #include "operator.h"
 
-// TODO:remove
-#include "datetime.h"
-
 #include <boost/heap/skew_heap.hpp>
 #include <boost/range.hpp>
 #include <boost/range/iterator_range.hpp>
@@ -370,14 +367,6 @@ struct MergeEventMaterializer : ColumnMaterializer {
             std::string const& evt = std::get<VALUE>(item);
             // Check size
             u16 size_required = sizeof(aku_Sample) + evt.size();
-
-            // TODO: remove
-            if (std::get<TIME>(point) == 1563063410000000000ull) {
-                std::cout << "Event: " << evt << std::endl;
-                char tmpbuf[100];
-                int tmplen = DateTimeUtil::to_iso_string(std::get<TIME>(point), tmpbuf, 100);
-                std::cout << "Time : " << std::string(tmpbuf, tmpbuf+tmplen) << ", " << std::get<TIME>(point) << std::endl;
-            }
 
             aku_Sample sample;
             sample.paramid = std::get<ID>(point);

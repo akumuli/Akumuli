@@ -61,6 +61,49 @@ def test_select_events_forward(dtstart, delta, N):
         raise ValueError("Results incomplete, {0} received, {1} expected".format(iterations, len(allevents)))
 
 
+@api_test("select-events backward")
+def test_select_events_backward(dtstart, delta, N):
+    """Read events in backward direction"""
+    nseries = 10
+    end = dtstart - delta
+    begin = dtstart + delta*(N + 1)
+    query = {
+            "select-events": "!foo",
+            "range": {
+                "from": begin.strftime('%Y%m%dT%H%M%S.%f'),
+                "to": end.strftime('%Y%m%dT%H%M%S.%f'),
+            },
+            "order-by": "time",
+            "output": { "format": "csv" }
+    } 
+    print(query)
+    print(allevents[-1])
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    iterations = 0
+    for line in response:
+        try:
+            expts, expname = allevents[-(iterations + 1)]
+            columns = line.split(',')
+            timestamp = att.parse_timestamp(columns[1].strip())
+            event = columns[2].lstrip().rstrip('\n')
+
+            if timestamp != expts:
+                print("Unexpected timestamp in line {0}".format(line))
+                raise ValueError("Wrong timestamp {0}, expected {1}".format(str(timestamp), str(expts)))
+
+            if expname != event:
+                print("Unexpected value in line {0}".format(line))
+                raise ValueError("Wrong value {0}, expected {1}".format(event, expname))
+
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations != len(allevents):
+        raise ValueError("Results incomplete, {0} received, {1} expected".format(iterations, len(allevents)))
+
+
 def main(path):
     akumulid = att.create_akumulid(path)
 
@@ -98,12 +141,9 @@ def main(path):
                 cnt += 1
                 timestamp = timestamp + delta
         time.sleep(5)  # wait untill all messagess will be processed
-        print(cnt)
-        print(dt)
-        print(timestamp)
 
-        test_select_events_forward(dt, delta, nmsgs)
-        #test_select_events_backward(dt, nmsgs)
+        test_select_events_forward(dt, delta, nmsgs*len(snames))
+        test_select_events_backward(dt, delta, nmsgs*len(snames))
 
     finally:
         print("Stopping server...")
