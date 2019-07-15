@@ -1582,13 +1582,17 @@ public:
         size_t outsz = 0;
         if (pos_ == top_) {
             // copy tail
+            u32 taillen = cap_ - top_;
             std::rotate(ts_.begin(), ts_.begin() + top_, ts_.begin() + cap_);
             std::rotate(xs_.begin(), xs_.begin() + top_, xs_.begin() + cap_);
 
             aku_Status status;
-            std::tie(status, cap_) = base_->read(ts_.data(), xs_.data(), BUF_SIZE);
+            std::tie(status, cap_) = base_->read(ts_.data() + taillen,
+                                                 xs_.data() + taillen,
+                                                 BUF_SIZE   - taillen);
+            cap_ += taillen;
             if (status == AKU_ENO_DATA) {
-                if (top_ == 0) {
+                if (cap_ == 0) {
                     return std::make_pair(status, 0);
                 }
             }

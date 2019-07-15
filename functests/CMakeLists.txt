@@ -31,6 +31,7 @@ file(COPY
     test_wal_parallel.py
     test_no_wal_recovery.py
     test_high_cardinality.py
+    test_events.py
     roundtrip.sh
     DESTINATION
     ./

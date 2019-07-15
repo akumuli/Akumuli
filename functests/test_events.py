@@ -76,8 +76,6 @@ def test_select_events_backward(dtstart, delta, N):
             "order-by": "time",
             "output": { "format": "csv" }
     } 
-    print(query)
-    print(allevents[-1])
     queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     iterations = 0
