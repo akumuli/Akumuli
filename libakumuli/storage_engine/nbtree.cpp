@@ -1610,6 +1610,10 @@ public:
                         top_ = end + 1;
                     }
                 }
+                if (cap_ == taillen && top_ == 0) {
+                    // Progress until no element could be produced.
+                    cap_ = 0;
+                }
             }
             else {
                 top_ = cap_;
