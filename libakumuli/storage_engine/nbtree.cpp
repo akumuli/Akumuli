@@ -1565,6 +1565,7 @@ class BinaryDataIterator : public BinaryDataOperator {
     std::array<double, BUF_SIZE> xs_;
     size_t pos_;
     size_t cap_;
+    size_t top_;
     std::string curr_;
     size_t curr_size_;
     aku_Timestamp outts_;
@@ -1573,16 +1574,21 @@ public:
     : base_(std::move(base))
     , pos_(0)
     , cap_(0)
+    , top_(0)
     {
     }
 
     virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, std::string *destval, size_t size) {
         size_t outsz = 0;
-        if (pos_ == cap_) {
+        if (pos_ == top_) {
+            // copy tail
+            std::rotate(ts_.begin(), ts_.begin() + top_, ts_.begin() + cap_);
+            std::rotate(xs_.begin(), xs_.begin() + top_, xs_.begin() + cap_);
+
             aku_Status status;
             std::tie(status, cap_) = base_->read(ts_.data(), xs_.data(), BUF_SIZE);
             if (status == AKU_ENO_DATA) {
-                if (cap_ == 0) {
+                if (top_ == 0) {
                     return std::make_pair(status, 0);
                 }
             }
@@ -1592,17 +1598,20 @@ public:
             pos_ = 0;
             if (get_direction() == Direction::BACKWARD) {
                 // Rotate elements
-                u32 begin = 0;
+                top_ = 0;
                 for (u32 end = 0; end < cap_; end++) {
                     if (ts_.at(end) % 1000 == 0) {
-                        std::reverse(xs_.begin() + begin, xs_.begin() + end + 1);
-                        std::reverse(ts_.begin() + begin, ts_.begin() + end + 1);
-                        begin = end + 1;
+                        std::reverse(xs_.begin() + top_, xs_.begin() + end + 1);
+                        std::reverse(ts_.begin() + top_, ts_.begin() + end + 1);
+                        top_ = end + 1;
                     }
                 }
             }
+            else {
+                top_ = cap_;
+            }
         }
-        while (size && pos_ < cap_) {
+        while (size && pos_ < top_) {
             char body[8];
             auto t = ts_[pos_];
             auto x = xs_[pos_];
