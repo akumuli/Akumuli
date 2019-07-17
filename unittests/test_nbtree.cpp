@@ -2957,3 +2957,15 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_6) {
     BOOST_REQUIRE_EQUAL(line, longevt);
     BOOST_REQUIRE_EQUAL(ts, ts2);
 }
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_7) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    aku_Timestamp ts1 = 1000000;
+    std::string   event(4096, 'l'); // event too large
+    auto outres = collection->append(ts1, reinterpret_cast<const u8*>(event.data()), event.size());
+    BOOST_REQUIRE(outres == NBTreeAppendResult::FAIL_BAD_VALUE);
+}

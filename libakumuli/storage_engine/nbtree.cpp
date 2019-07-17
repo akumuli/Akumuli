@@ -3556,7 +3556,7 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, const u8* blob, u
     // count.
     // The head element contains size [0..999] and time offset [0, 999].
     // Original timestamp can be restored using the time offset.
-    if (size == 0) {
+    if (size == 0 || size > AKU_LIMITS_MAX_EVENT_LEN) {
         return NBTreeAppendResult::FAIL_BAD_VALUE;
     }
     aku_Timestamp basets = (ts / 1000) * 1000;
