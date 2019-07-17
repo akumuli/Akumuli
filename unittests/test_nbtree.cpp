@@ -2921,3 +2921,39 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_5) {
     outres = collection->append(1000010, &data, 1);
     BOOST_REQUIRE(outres == NBTreeAppendResult::FAIL_LATE_WRITE);
 }
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_6) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    aku_Timestamp ts1 = 1000000;
+    aku_Timestamp ts2 = 2000000;
+    std::string   shortevt(512, 's');
+    std::string   longevt(4096 - 8, 'l');
+    auto outres = collection->append(ts1, reinterpret_cast<const u8*>(shortevt.data()), shortevt.size());
+    BOOST_REQUIRE(outres == NBTreeAppendResult::OK);
+    outres = collection->append(ts2, reinterpret_cast<const u8*>(longevt.data()), longevt.size());  // This message spans block boundary
+    BOOST_REQUIRE(outres == NBTreeAppendResult::OK);
+
+    // Read back
+    auto it = collection->search_binary(ts1, ts2 + 1000);
+
+    // Verify
+    aku_Status    itstatus = AKU_SUCCESS;
+    size_t        itsize;
+    aku_Timestamp ts;
+    std::string   line;
+
+    // Read first
+    std::tie(itstatus, itsize) = it->read(&ts, &line, 1);
+    BOOST_REQUIRE_EQUAL(itsize, 1);
+    BOOST_REQUIRE_EQUAL(line, shortevt);
+    BOOST_REQUIRE_EQUAL(ts, ts1);
+    // Read 2nd
+    std::tie(itstatus, itsize) = it->read(&ts, &line, 1);
+    BOOST_REQUIRE_EQUAL(itsize, 1);
+    BOOST_REQUIRE_EQUAL(line, longevt);
+    BOOST_REQUIRE_EQUAL(ts, ts2);
+}

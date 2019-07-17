@@ -1580,74 +1580,76 @@ public:
 
     virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, std::string *destval, size_t size) {
         size_t outsz = 0;
-        if (pos_ == top_) {
-            // copy tail
-            u32 taillen = cap_ - top_;
-            std::rotate(ts_.begin(), ts_.begin() + top_, ts_.begin() + cap_);
-            std::rotate(xs_.begin(), xs_.begin() + top_, xs_.begin() + cap_);
+        while (size) {
+            if (pos_ == top_) {
+                // copy tail
+                u32 taillen = cap_ - top_;
+                std::rotate(ts_.begin(), ts_.begin() + top_, ts_.begin() + cap_);
+                std::rotate(xs_.begin(), xs_.begin() + top_, xs_.begin() + cap_);
 
-            aku_Status status;
-            std::tie(status, cap_) = base_->read(ts_.data() + taillen,
-                                                 xs_.data() + taillen,
-                                                 BUF_SIZE   - taillen);
-            cap_ += taillen;
-            if (status == AKU_ENO_DATA) {
-                if (cap_ == 0) {
+                aku_Status status;
+                std::tie(status, cap_) = base_->read(ts_.data() + taillen,
+                                                     xs_.data() + taillen,
+                                                     BUF_SIZE   - taillen);
+                cap_ += taillen;
+                if (status == AKU_ENO_DATA) {
+                    if (cap_ == 0) {
+                        return std::make_pair(status, 0);
+                    }
+                }
+                else if (status != AKU_SUCCESS) {
                     return std::make_pair(status, 0);
                 }
-            }
-            else if (status != AKU_SUCCESS) {
-                return std::make_pair(status, 0);
-            }
-            pos_ = 0;
-            if (get_direction() == Direction::BACKWARD) {
-                // Rotate elements
-                top_ = 0;
-                for (u32 end = 0; end < cap_; end++) {
-                    if (ts_.at(end) % 1000 == 0) {
-                        std::reverse(xs_.begin() + top_, xs_.begin() + end + 1);
-                        std::reverse(ts_.begin() + top_, ts_.begin() + end + 1);
-                        top_ = end + 1;
+                pos_ = 0;
+                if (get_direction() == Direction::BACKWARD) {
+                    // Rotate elements
+                    top_ = 0;
+                    for (u32 end = 0; end < cap_; end++) {
+                        if (ts_.at(end) % 1000 == 0) {
+                            std::reverse(xs_.begin() + top_, xs_.begin() + end + 1);
+                            std::reverse(ts_.begin() + top_, ts_.begin() + end + 1);
+                            top_ = end + 1;
+                        }
+                    }
+                    if (cap_ == taillen && top_ == 0) {
+                        // Progress until no element could be produced.
+                        cap_ = 0;
                     }
                 }
-                if (cap_ == taillen && top_ == 0) {
-                    // Progress until no element could be produced.
-                    cap_ = 0;
+                else {
+                    top_ = cap_;
                 }
             }
-            else {
-                top_ = cap_;
-            }
-        }
-        while (size && pos_ < top_) {
-            char body[8];
-            auto t = ts_[pos_];
-            auto x = xs_[pos_];
-            pos_++;
-            if (t % 1000 == 0) {
-                u32 tsoff;
-                u32 size;
-                memcpy(body, &x, 8);
-                memcpy(&size, body, 4);
-                memcpy(&tsoff, body + 4, 4);
-                curr_.clear();
-                curr_.reserve(static_cast<size_t>(size));
-                outts_ = t + tsoff;
-                curr_size_ = size;
-            } else {
-                memcpy(body, &x, 8);
-                int niter = static_cast<int>(std::min(sizeof(body), curr_size_ - curr_.size()));
-                for (int i = 0; i < niter; i++) {
-                    if (curr_size_ > curr_.size()) {
-                        curr_.push_back(body[i]);
+            while (size && pos_ < top_) {
+                char body[8];
+                auto t = ts_[pos_];
+                auto x = xs_[pos_];
+                pos_++;
+                if (t % 1000 == 0) {
+                    u32 tsoff;
+                    u32 size;
+                    memcpy(body, &x, 8);
+                    memcpy(&size, body, 4);
+                    memcpy(&tsoff, body + 4, 4);
+                    curr_.clear();
+                    curr_.reserve(static_cast<size_t>(size));
+                    outts_ = t + tsoff;
+                    curr_size_ = size;
+                } else {
+                    memcpy(body, &x, 8);
+                    int niter = static_cast<int>(std::min(sizeof(body), curr_size_ - curr_.size()));
+                    for (int i = 0; i < niter; i++) {
+                        if (curr_size_ > curr_.size()) {
+                            curr_.push_back(body[i]);
+                        }
                     }
-                }
-                if (curr_size_ == curr_.size()) {
-                    *destts++ = outts_;
-                    *destval++ = curr_;
-                    size--;
-                    outsz++;
+                    if (curr_size_ == curr_.size()) {
+                        *destts++ = outts_;
+                        *destval++ = curr_;
+                        size--;
+                        outsz++;
 
+                    }
                 }
             }
         }
