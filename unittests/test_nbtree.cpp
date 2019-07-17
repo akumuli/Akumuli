@@ -2922,7 +2922,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_5) {
     BOOST_REQUIRE(outres == NBTreeAppendResult::FAIL_LATE_WRITE);
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_6) {
+void two_event_append_test(std::string first, std::string second) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
@@ -2930,11 +2930,9 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_6) {
 
     aku_Timestamp ts1 = 1000000;
     aku_Timestamp ts2 = 2000000;
-    std::string   shortevt(512, 's');
-    std::string   longevt(4096 - 8, 'l');
-    auto outres = collection->append(ts1, reinterpret_cast<const u8*>(shortevt.data()), shortevt.size());
+    auto outres = collection->append(ts1, reinterpret_cast<const u8*>(first.data()), first.size());
     BOOST_REQUIRE(outres == NBTreeAppendResult::OK);
-    outres = collection->append(ts2, reinterpret_cast<const u8*>(longevt.data()), longevt.size());  // This message spans block boundary
+    outres = collection->append(ts2, reinterpret_cast<const u8*>(second.data()), second.size());  // This message spans block boundary
     BOOST_REQUIRE(outres == NBTreeAppendResult::OK);
 
     // Read back
@@ -2949,16 +2947,28 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_6) {
     // Read first
     std::tie(itstatus, itsize) = it->read(&ts, &line, 1);
     BOOST_REQUIRE_EQUAL(itsize, 1);
-    BOOST_REQUIRE_EQUAL(line, shortevt);
+    BOOST_REQUIRE_EQUAL(line, first);
     BOOST_REQUIRE_EQUAL(ts, ts1);
     // Read 2nd
     std::tie(itstatus, itsize) = it->read(&ts, &line, 1);
     BOOST_REQUIRE_EQUAL(itsize, 1);
-    BOOST_REQUIRE_EQUAL(line, longevt);
+    BOOST_REQUIRE_EQUAL(line, second);
     BOOST_REQUIRE_EQUAL(ts, ts2);
 }
 
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_6) {
+    std::string   shortevt(512, 's');
+    std::string   longevt(AKU_LIMITS_MAX_EVENT_LEN, 'l');
+    two_event_append_test(shortevt, longevt);
+}
+
 BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_7) {
+    std::string   first(AKU_LIMITS_MAX_EVENT_LEN, '1');
+    std::string   second(AKU_LIMITS_MAX_EVENT_LEN, '2');
+    two_event_append_test(first, second);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_8) {
     std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
     std::vector<LogicAddr> addrlist;
     auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
