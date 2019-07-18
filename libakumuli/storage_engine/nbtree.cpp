@@ -1583,6 +1583,7 @@ public:
         while (size) {
             if (pos_ == top_) {
                 // copy tail
+                assert(top_ <= cap_);
                 u32 taillen = cap_ - top_;
                 std::rotate(ts_.begin(), ts_.begin() + top_, ts_.begin() + cap_);
                 std::rotate(xs_.begin(), xs_.begin() + top_, xs_.begin() + cap_);
@@ -1592,18 +1593,19 @@ public:
                                                      xs_.data() + taillen,
                                                      BUF_SIZE   - taillen);
                 cap_ += taillen;
+                top_ = 0;
+                pos_ = 0;
+                assert(cap_ <= BUF_SIZE);
                 if (status == AKU_ENO_DATA) {
                     if (cap_ == 0) {
-                        return std::make_pair(status, 0);
+                        return std::make_pair(status, outsz);
                     }
                 }
                 else if (status != AKU_SUCCESS) {
                     return std::make_pair(status, 0);
                 }
-                pos_ = 0;
                 if (get_direction() == Direction::BACKWARD) {
                     // Rotate elements
-                    top_ = 0;
                     for (u32 end = 0; end < cap_; end++) {
                         if (ts_.at(end) % 1000 == 0) {
                             std::reverse(xs_.begin() + top_, xs_.begin() + end + 1);
@@ -1611,6 +1613,7 @@ public:
                             top_ = end + 1;
                         }
                     }
+                    assert(top_ <= cap_);
                     if (cap_ == taillen && top_ == 0) {
                         // Progress until no element could be produced.
                         cap_ = 0;
