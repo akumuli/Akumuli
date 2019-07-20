@@ -531,6 +531,8 @@ public:
       */
     NBTreeAppendResult append(aku_Timestamp ts, double value, bool allow_duplicate_timestamps=true);
 
+    NBTreeAppendResult append(aku_Timestamp ts, const u8 *blob, u32 size);
+
     /**
      * @brief search function
      * @param begin is a start of the search interval
@@ -538,6 +540,7 @@ public:
      * @return
      */
     std::unique_ptr<RealValuedOperator> search(aku_Timestamp begin, aku_Timestamp end) const;
+    std::unique_ptr<BinaryDataOperator> search_binary(aku_Timestamp begin, aku_Timestamp end) const;
 
     /**
      * @brief search function

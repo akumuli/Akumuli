@@ -36,7 +36,7 @@ namespace Akumuli {
 
 static const StringT EMPTY = std::make_pair(nullptr, 0);
 
-SeriesMatcher::SeriesMatcher(u64 starting_id)
+SeriesMatcher::SeriesMatcher(i64 starting_id)
     : table(StringTools::create_table(0x1000))
     , series_id(starting_id)
 {
@@ -45,9 +45,14 @@ SeriesMatcher::SeriesMatcher(u64 starting_id)
     }
 }
 
-u64 SeriesMatcher::add(const char* begin, const char* end) {
+i64 SeriesMatcher::add(const char* begin, const char* end) {
     std::lock_guard<std::mutex> guard(mutex);
-    auto id = series_id++;
+    auto prev_id = series_id++;
+    auto id = prev_id;
+    if (*begin == '!') {
+        // Series name starts with ! which mean that we're dealing with event
+        id = -1*id;
+    }
     aku_Status status;
     StringT sname;
     std::tie(status, sname) = index.append(begin, end);
@@ -62,14 +67,14 @@ u64 SeriesMatcher::add(const char* begin, const char* end) {
     return id;
 }
 
-void SeriesMatcher::_add(std::string series, u64 id) {
+void SeriesMatcher::_add(std::string series, i64 id) {
     if (series.empty()) {
         return;
     }
     _add(series.data(), series.data() + series.size(), id);
 }
 
-void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
+void SeriesMatcher::_add(const char*  begin, const char* end, i64 id) {
     std::lock_guard<std::mutex> guard(mutex);
     aku_Status status;
     StringT sname;
@@ -79,7 +84,7 @@ void SeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
     inv_table[id] = sname;
 }
 
-u64 SeriesMatcher::match(const char* begin, const char* end) const {
+i64 SeriesMatcher::match(const char* begin, const char* end) const {
     int len = static_cast<int>(end - begin);
     StringT str = std::make_pair(begin, len);
 
@@ -91,7 +96,7 @@ u64 SeriesMatcher::match(const char* begin, const char* end) const {
     return it->second;
 }
 
-StringT SeriesMatcher::id2str(u64 tokenid) const {
+StringT SeriesMatcher::id2str(i64 tokenid) const {
     std::lock_guard<std::mutex> guard(mutex);
     auto it = inv_table.find(tokenid);
     if (it == inv_table.end()) {
@@ -105,8 +110,8 @@ void SeriesMatcher::pull_new_names(std::vector<PlainSeriesMatcher::SeriesNameT> 
     std::swap(names, *buffer);
 }
 
-std::vector<u64> SeriesMatcher::get_all_ids() const {
-    std::vector<u64> result;
+std::vector<i64> SeriesMatcher::get_all_ids() const {
+    std::vector<i64> result;
     {
         std::lock_guard<std::mutex> guard(mutex);
         for (auto const &tup: inv_table) {
@@ -192,7 +197,7 @@ size_t SeriesMatcher::pool_memory_use() const {
 //   LegacySeriesMatcher    //
 //                          //
 
-PlainSeriesMatcher::PlainSeriesMatcher(u64 starting_id)
+PlainSeriesMatcher::PlainSeriesMatcher(i64 starting_id)
     : table(StringTools::create_table(0x1000))
     , series_id(starting_id)
 {
@@ -201,7 +206,7 @@ PlainSeriesMatcher::PlainSeriesMatcher(u64 starting_id)
     }
 }
 
-u64 PlainSeriesMatcher::add(const char* begin, const char* end) {
+i64 PlainSeriesMatcher::add(const char* begin, const char* end) {
     auto id = series_id++;
     StringT pstr = pool.add(begin, end);
     auto tup = std::make_tuple(std::get<0>(pstr), std::get<1>(pstr), id);
@@ -212,7 +217,7 @@ u64 PlainSeriesMatcher::add(const char* begin, const char* end) {
     return id;
 }
 
-void PlainSeriesMatcher::_add(std::string series, u64 id) {
+void PlainSeriesMatcher::_add(std::string series, i64 id) {
     if (series.empty()) {
         return;
     }
@@ -224,14 +229,14 @@ void PlainSeriesMatcher::_add(std::string series, u64 id) {
     inv_table[id] = pstr;
 }
 
-void PlainSeriesMatcher::_add(const char*  begin, const char* end, u64 id) {
+void PlainSeriesMatcher::_add(const char*  begin, const char* end, i64 id) {
     StringT pstr = pool.add(begin, end);
     std::lock_guard<std::mutex> guard(mutex);
     table[pstr] = id;
     inv_table[id] = pstr;
 }
 
-u64 PlainSeriesMatcher::match(const char* begin, const char* end) const {
+i64 PlainSeriesMatcher::match(const char* begin, const char* end) const {
 
     int len = static_cast<int>(end - begin);
     StringT str = std::make_pair(begin, len);
@@ -244,7 +249,7 @@ u64 PlainSeriesMatcher::match(const char* begin, const char* end) const {
     return it->second;
 }
 
-StringT PlainSeriesMatcher::id2str(u64 tokenid) const {
+StringT PlainSeriesMatcher::id2str(i64 tokenid) const {
     std::lock_guard<std::mutex> guard(mutex);
     auto it = inv_table.find(tokenid);
     if (it == inv_table.end()) {
@@ -258,8 +263,8 @@ void PlainSeriesMatcher::pull_new_names(std::vector<PlainSeriesMatcher::SeriesNa
     std::swap(names, *buffer);
 }
 
-std::vector<u64> PlainSeriesMatcher::get_all_ids() const {
-    std::vector<u64> result;
+std::vector<i64> PlainSeriesMatcher::get_all_ids() const {
+    std::vector<i64> result;
     {
         std::lock_guard<std::mutex> guard(mutex);
         for (auto const &tup: inv_table) {
@@ -688,14 +693,14 @@ void GroupByTag::refresh_() {
                     auto localid = local_matcher_.add(result.first, result.first + result.second);
                     auto str = local_matcher_.id2str(localid);
                     snames_.insert(str);
-                    ids_[std::get<2>(item)] = localid;
+                    ids_[static_cast<aku_ParamId>(std::get<2>(item))] = static_cast<aku_ParamId>(localid);
                 } else {
                     // local name already created
                     auto localid = local_matcher_.match(result.first, result.first + result.second);
                     if (localid == 0ul) {
                         AKU_PANIC("inconsistent matcher state");
                     }
-                    ids_[std::get<2>(item)] = localid;
+                    ids_[static_cast<aku_ParamId>(std::get<2>(item))] = static_cast<aku_ParamId>(localid);
                 }
             }
         }

@@ -109,6 +109,9 @@ using RealValuedOperator = SeriesOperator<double>;
 //! Base class for all aggregating iterators. Return single value.
 using AggregateOperator = SeriesOperator<AggregationResult>;
 
+//! Base class for all event iterators.
+using BinaryDataOperator = SeriesOperator<std::string>;
+
 
 /** This interface is used by column-store internally.
   * It materializes tuples/values and produces a series of aku_Sample values.

@@ -66,6 +66,7 @@ typedef struct {
                        = 1 << 2,  /** indicates that timestamp shouldn't be formatted during output */
         FLOAT_BIT      = 1 << 4,  /** scalar type */
         TUPLE_BIT      = 1 << 5,  /** tuple type */
+        EVENT_BIT      = 1 << 6,  /** event type */
         SAX_WORD       = 1 << 10, /** indicates that SAX word is stored in extra payload */
     };
     u16 type;
@@ -81,6 +82,7 @@ typedef struct {
 
 #define AKU_PAYLOAD_FLOAT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::FLOAT_BIT)
 #define AKU_PAYLOAD_TUPLE (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::TUPLE_BIT)
+#define AKU_PAYLOAD_EVENT (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT | aku_PData::EVENT_BIT)
 #define AKU_PAYLOAD_NONE  (aku_PData::PARAMID_BIT | aku_PData::TIMESTAMP_BIT)
 
 //! Cursor result type
@@ -115,6 +117,7 @@ typedef struct {
 //! Longest possible series name
 #define AKU_LIMITS_MAX_SNAME 0x1000
 #define AKU_LIMITS_MAX_ROW_WIDTH 0x100
+#define AKU_LIMITS_MAX_EVENT_LEN 4096
 #define AKU_MIN_TIMESTAMP 0ull
 #define AKU_MAX_TIMESTAMP (~0ull)
 #define AKU_STACK_SIZE 0x100000

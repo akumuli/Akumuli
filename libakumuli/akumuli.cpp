@@ -342,7 +342,6 @@ aku_Status aku_write(aku_Session* session, const aku_Sample* sample) {
     return ises->add_sample(*sample);
 }
 
-
 aku_Status aku_parse_duration(const char* str, int* value) {
     try {
         *value = DateTimeUtil::parse_duration(str, strlen(str));

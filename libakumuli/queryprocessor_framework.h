@@ -128,11 +128,12 @@ struct Filter {
 //! Set of ids returned by the query (defined by select and where clauses)
 struct Selection {
     //! Set of columns returned by the query (1 columns - select statement, N columns - join statement)
-    std::vector<Column> columns;
-    std::vector<Filter> filters;
+    std::vector<Column>        columns;
+    std::vector<Filter>        filters;
     FilterCombinationRule  filter_rule;
-    aku_Timestamp         begin;
-    aku_Timestamp           end;
+    aku_Timestamp                begin;
+    aku_Timestamp                  end;
+    bool                        events;
 
     //! This matcher should be used by Join-statement
     std::shared_ptr<PlainSeriesMatcher> matcher;

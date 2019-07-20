@@ -100,21 +100,24 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
     } else if (metric_.empty()) {
         // Case 2, metric not set.
         // get all ids
-        ids = matcher.get_all_ids();
+        auto sids = matcher.get_all_ids();
+        for (i64 id: sids) {
+            ids.push_back(static_cast<aku_ParamId>(id));
+        }
     } else {
         // Case 3, metric is set
         auto first_metric = metric_.front();
         IncludeMany2Many query(first_metric, tags_);
         auto search_results = matcher.search(query);
         for (auto tup: search_results) {
-            ids.push_back(std::get<2>(tup));
+            ids.push_back(static_cast<aku_ParamId>(std::get<2>(tup)));
         }
         if (metric_.size() > 1) {
             std::vector<std::string> tail(metric_.begin() + 1, metric_.end());
             std::vector<aku_ParamId> full(ids);
             for (auto metric: tail) {
                 for (auto id: ids) {
-                    StringT name = matcher.id2str(id);
+                    StringT name = matcher.id2str(static_cast<i64>(id));
                     if (name.second == 0) {
                         // This shouldn't happen but it can happen after memory corruption or data-race.
                         // Clearly indicates an error.
@@ -124,7 +127,8 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Se
                     std::string series_tags(name.first + first_metric.size(), name.first + name.second);
                     std::string alt_name = metric + series_tags;
                     auto sid = matcher.match(alt_name.data(), alt_name.data() + alt_name.size());
-                    full.push_back(sid);  // NOTE: sid (secondary id) can be = 0. This means that there is no such
+                    full.push_back(static_cast<aku_ParamId>(sid));
+                                          // NOTE: sid (secondary id) can be = 0. This means that there is no such
                                           // combination of metric and tags. Different strategies can be used to deal with
                                           // such cases. Query can leave this element of the tuple blank or discard it.
                 }
@@ -140,7 +144,10 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
     // Three cases, no metric (get all ids), only metric is set and both metric and tags are set.
     if (metric_.empty()) {
         // Case 1, metric not set.
-        ids = matcher.get_all_ids();
+        auto sids = matcher.get_all_ids();
+        for (i64 id: sids) {
+            ids.push_back(static_cast<aku_ParamId>(id));
+        }
     } else {
         auto first_metric = metric_.front();
         if (tags_.empty()) {
@@ -150,7 +157,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
             std::string expression = regex.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
-                ids.push_back(std::get<2>(res));
+                ids.push_back(static_cast<aku_ParamId>(std::get<2>(res)));
             }
         } else {
             // Case 3, both metric and tags are set
@@ -173,7 +180,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
             std::string expression = regexp.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
-                ids.push_back(std::get<2>(res));
+                ids.push_back(static_cast<aku_ParamId>(std::get<2>(res)));
             }
         }
 
@@ -182,7 +189,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
             std::vector<aku_ParamId> full(ids);
             for (auto metric: tail) {
                 for (auto id: ids) {
-                    StringT name = matcher.id2str(id);
+                    StringT name = matcher.id2str(static_cast<i64>(id));
                     if (name.second == 0) {
                         // This shouldn't happen but it can happen after memory corruption or data-race.
                         // Clearly indicates an error.
@@ -192,7 +199,8 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::extract_ids(Pl
                     std::string series_tags(name.first + first_metric.size(), name.first + name.second);
                     std::string alt_name = metric + series_tags;
                     auto sid = matcher.match(alt_name.data(), alt_name.data() + alt_name.size());
-                    full.push_back(sid);  // NOTE: sid (secondary id) can be = 0. This means that there is no such
+                    full.push_back(static_cast<aku_ParamId>(sid));
+                                          // NOTE: sid (secondary id) can be = 0. This means that there is no such
                                           // combination of metric and tags. Different strategies can be used to deal with
                                           // such cases. Query can leave this element of the tuple blank or discard it.
                 }
@@ -218,7 +226,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(Pl
             std::string expression = regex.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
-                ids.push_back(std::get<2>(res));
+                ids.push_back(static_cast<aku_ParamId>(std::get<2>(res)));
             }
         } else {
             // Case 3, both metric and tags are set
@@ -241,7 +249,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(Pl
             std::string expression = regexp.str();
             auto results = matcher.regex_match(expression.c_str());
             for (auto res: results) {
-                ids.push_back(std::get<2>(res));
+                ids.push_back(static_cast<aku_ParamId>(std::get<2>(res)));
             }
         }
 
@@ -250,7 +258,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>> SeriesRetreiver::fuzzy_match(Pl
             std::vector<aku_ParamId> full(ids);
             for (auto metric: tail) {
                 for (auto id: ids) {
-                    StringT name = matcher.id2str(id);
+                    StringT name = matcher.id2str(static_cast<i64>(id));
                     if (name.second == 0) {
                         // This shouldn't happen but it can happen after memory corruption or data-race.
                         // Clearly indicates an error.
@@ -286,7 +294,8 @@ bool is_meta_query(std::string name) {
     return false;
 }
 
-static std::tuple<aku_Status, std::string, ErrorMsg> parse_select_stmt(boost::property_tree::ptree const& ptree) {
+static std::tuple<aku_Status, std::string, ErrorMsg> parse_search_select_stmt(boost::property_tree::ptree const& ptree) {
+    // This should allow to search both metric events or all (if empty string is passed)
     auto select = ptree.get_child_optional("select");
     if (select && select->empty()) {
         // select query
@@ -294,6 +303,36 @@ static std::tuple<aku_Status, std::string, ErrorMsg> parse_select_stmt(boost::pr
         return std::make_tuple(AKU_SUCCESS, str, ErrorMsg());
     }
     return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "Query object doesn't have a 'select' field");
+}
+
+static std::tuple<aku_Status, std::string, ErrorMsg> parse_select_stmt(boost::property_tree::ptree const& ptree) {
+    auto select = ptree.get_child_optional("select");
+    if (select && select->empty()) {
+        // select query
+        auto str = select->get_value<std::string>("");
+        if (!str.empty() && str.front() != '!') {
+            return std::make_tuple(AKU_SUCCESS, str, ErrorMsg());
+        }
+        else {
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "Metric name can't be empty or start with '!' symbol");
+        }
+    }
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "Query object doesn't have a 'select' field");
+}
+
+static std::tuple<aku_Status, std::string, ErrorMsg> parse_select_events_stmt(boost::property_tree::ptree const& ptree) {
+    auto select = ptree.get_child_optional("select-events");
+    if (select && select->empty()) {
+        // select query
+        auto str = select->get_value<std::string>("");
+        if (!str.empty() && str.front() == '!') {
+            return std::make_tuple(AKU_SUCCESS, str, ErrorMsg());
+        }
+        else {
+            return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "Event name should start with '!' symbol");
+        }
+    }
+    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "Query object doesn't have a 'select-events' field");
 }
 
 /** Parse `join` statement, format:
@@ -309,7 +348,12 @@ static std::tuple<aku_Status, std::vector<std::string>, ErrorMsg>
         for (auto item: *join) {
             auto value = item.second.get_value_optional<std::string>();
             if (value) {
-                result.push_back(*value);
+                auto str = *value;
+                if (!str.empty() && str.front() != '!') {
+                    result.push_back(str);
+                } else {
+                    return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Metric name can't be empty or start with '!' symbol");
+                }
             } else {
                 return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Metric name expected");
             }
@@ -333,7 +377,11 @@ static std::tuple<aku_Status, std::vector<std::string>, std::vector<std::string>
         for (auto kv: *aggregate) {
             auto metric_name = kv.first;
             auto func = kv.second.get_value<std::string>("count");
-            metrics.push_back(metric_name);
+            if (!metric_name.empty() && metric_name.front() != '!') {
+                metrics.push_back(metric_name);
+            } else {
+                return std::make_tuple(AKU_EQUERY_PARSING_ERROR, EMPTY, EMPTY, "Metric name can't be empty or start with '!' symbol");
+            }
             functions.push_back(func);
         }
         if (metrics.empty()) {
@@ -410,11 +458,24 @@ static std::tuple<aku_Status, GroupAggregate, ErrorMsg> parse_group_aggregate_st
                     for (auto child: aggregate->get_child("metric")) {
                         auto metric = child.second.get_value_optional<std::string>();
                         if (metric) {
-                            result.metric.push_back(*metric);
+                            if (!metric->empty() && metric->front() != '!') {
+                                result.metric.push_back(*metric);
+                            } else {
+                                Logger::msg(AKU_LOG_ERROR, "Metric name can't be empty or start with '!' symbol");
+                                error_fmt << "metric name can't be empty or start with '!' symbol";
+                                break;
+                            }
                         }
                     }
                     if (result.metric.empty()) {
-                        result.metric.push_back(value.get());
+                        auto mname = value.get();
+                        if (!mname.empty() && mname.front() != '!') {
+                            result.metric.push_back(mname);
+                        } else {
+                            Logger::msg(AKU_LOG_ERROR, "Metric name can't be empty or start with '!' symbol");
+                            error_fmt << "metric name can't be empty or start with '!' symbol";
+                            break;
+                        }
                     }
                     components[1] = true;
                 }
@@ -840,6 +901,8 @@ std::tuple<aku_Status, QueryKind, ErrorMsg> QueryParser::get_query_kind(boost::p
             return std::make_tuple(AKU_SUCCESS, QueryKind::JOIN, ErrorMsg());
         } else if (item.first == "group-aggregate") {
             return std::make_tuple(AKU_SUCCESS, QueryKind::GROUP_AGGREGATE, ErrorMsg());
+        } else if (item.first == "select-events") {
+            return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT_EVENTS, ErrorMsg());
         }
     }
     static const char* error_message = "Query object type is undefined. "
@@ -853,7 +916,8 @@ std::tuple<aku_Status, ErrorMsg> validate_query(boost::property_tree::ptree cons
         "select",
         "aggregate",
         "join",
-        "group-aggregate"
+        "group-aggregate",
+        "select-events",
     };
     static const std::set<std::string> ALLOWED_STMTS = {
         "select",
@@ -871,6 +935,7 @@ std::tuple<aku_Status, ErrorMsg> validate_query(boost::property_tree::ptree cons
         "group-aggregate",
         "apply",
         "filter",
+        "select-events",
     };
     std::set<std::string> keywords;
     for (const auto& item: ptree) {
@@ -972,7 +1037,7 @@ std::tuple<aku_Status, std::vector<aku_ParamId>, ErrorMsg>
         return std::make_tuple(status, ids, error);
     }
     std::string name;
-    std::tie(status, name, error) = parse_select_stmt(ptree);
+    std::tie(status, name, error) = parse_search_select_stmt(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, ids, error);
     }
@@ -1254,6 +1319,83 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query
     }
 
     std::tie(status, result.select.filters, result.select.filter_rule, error) = parse_filter(ptree, {metric});
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+
+    return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
+}
+
+std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_events_query(
+                                                    boost::property_tree::ptree const& ptree,
+                                                    const SeriesMatcher &matcher)
+{
+    ReshapeRequest result = {};
+    result.select.events = true;
+    ErrorMsg error;
+    aku_Status status;
+    std::tie(status, error) = validate_query(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+
+    Logger::msg(AKU_LOG_INFO, "Parsing query:");
+    Logger::msg(AKU_LOG_INFO, to_json(ptree, true).c_str());
+
+    // Metric name
+    std::string metric;
+    std::tie(status, metric, error) = parse_select_events_stmt(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+
+    // Group-by statement
+    GroupByOpType op;
+    std::vector<std::string> tags;
+    std::tie(status, tags, op, error) = parse_groupby(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+    auto groupbytag = std::shared_ptr<GroupByTag>();
+    if (!tags.empty()) {
+        groupbytag.reset(new GroupByTag(matcher, metric, tags, op));
+    }
+
+    // Order-by statment
+    OrderBy order;
+    std::tie(status, order, error) = parse_orderby(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+
+    // Where statement
+    std::vector<aku_ParamId> ids;
+    std::tie(status, ids, error) = parse_where_clause(ptree, {metric}, matcher);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+
+    // Read timestamps
+    aku_Timestamp ts_begin, ts_end;
+    std::tie(status, ts_begin, ts_end, error) = parse_range_timestamp(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+
+    // Initialize request
+    result.agg.enabled = false;
+    result.select.begin = ts_begin;
+    result.select.end = ts_end;
+    result.select.columns.push_back(Column{ids});
+
+    result.order_by = order;
+
+    result.group_by.enabled = static_cast<bool>(groupbytag);
+    if (groupbytag) {
+        result.group_by.transient_map = groupbytag->get_mapping();
+        result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->get_series_matcher());
+    }
+
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }

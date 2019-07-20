@@ -114,7 +114,7 @@ struct StringTools {
     static size_t hash(StringT str);
     static bool equal(StringT lhs, StringT rhs);
 
-    typedef std::unordered_map<StringT, u64, decltype(&StringTools::hash),
+    typedef std::unordered_map<StringT, i64, decltype(&StringTools::hash),
                                decltype(&StringTools::equal)>
         TableT;
 
@@ -132,7 +132,7 @@ struct StringTools {
     typedef std::unordered_map<StringT, L2TableT, decltype(&StringTools::hash), decltype(&StringTools::equal)> L3TableT;
 
     //! Inverted table type (id to string mapping)
-    typedef std::unordered_map<u64, StringT> InvT;
+    typedef std::unordered_map<i64, StringT> InvT;
 
     static TableT create_table(size_t size);
 
