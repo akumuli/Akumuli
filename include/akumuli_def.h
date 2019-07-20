@@ -117,7 +117,7 @@ typedef struct {
 //! Longest possible series name
 #define AKU_LIMITS_MAX_SNAME 0x1000
 #define AKU_LIMITS_MAX_ROW_WIDTH 0x100
-#define AKU_LIMITS_MAX_EVENT_LEN 4088
+#define AKU_LIMITS_MAX_EVENT_LEN 4096
 #define AKU_MIN_TIMESTAMP 0ull
 #define AKU_MAX_TIMESTAMP (~0ull)
 #define AKU_STACK_SIZE 0x100000

@@ -271,3 +271,38 @@ target_link_libraries(
     ${Boost_LIBRARIES}
 )
 set_target_properties(perf_iovec PROPERTIES EXCLUDE_FROM_ALL 1)
+
+# Compression events perftest
+add_executable(
+    perf_compression_events
+    perf_compression_events.cpp
+    perftest_tools.cpp
+    ../libakumuli/storage_engine/compression.cpp
+    ../libakumuli/storage_engine/blockstore.cpp
+    ../libakumuli/storage_engine/volume.cpp
+    ../libakumuli/storage_engine/column_store.cpp
+    ../libakumuli/storage_engine/nbtree.cpp
+    ../libakumuli/storage_engine/operators/operator.cpp
+    ../libakumuli/storage_engine/operators/aggregate.cpp
+    ../libakumuli/storage_engine/operators/scan.cpp
+    ../libakumuli/storage_engine/operators/join.cpp
+    ../libakumuli/storage_engine/operators/merge.cpp
+    ../libakumuli/index/invertedindex.cpp
+    ../libakumuli/status_util.cpp
+    ../libakumuli/util.cpp
+    ../libakumuli/crc32c.cpp
+    ../libakumuli/log_iface.cpp
+    ../libakumuli/datetime.cpp
+    ../libakumuli/index/seriesparser.cpp
+    ../libakumuli/index/stringpool.cpp
+)
+
+target_link_libraries(
+    perf_compression_events
+    z
+    "${APRUTIL_LIBRARY}"
+    "${APR_LIBRARY}"
+    ${Boost_LIBRARIES}
+    pthread
+)
+set_target_properties(perf_compression_events PROPERTIES EXCLUDE_FROM_ALL 1)
