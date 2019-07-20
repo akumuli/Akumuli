@@ -2975,7 +2975,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_8) {
     collection->force_init();
 
     aku_Timestamp ts1 = 1000000;
-    std::string   event(4096, 'l'); // event too large
+    std::string   event(4097, 'l'); // event too large
     auto outres = collection->append(ts1, reinterpret_cast<const u8*>(event.data()), event.size());
     BOOST_REQUIRE(outres == NBTreeAppendResult::FAIL_BAD_VALUE);
 }
