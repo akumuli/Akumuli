@@ -9,6 +9,9 @@ set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}"
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
 
 set(APP_ARCH "")
+if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i686")
+    set(APP_ARCH "x86")
+endif()
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
     set(APP_ARCH "amd64")
 endif()
@@ -16,7 +19,7 @@ if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
     set(APP_ARCH "arm64")
 endif()
 if("${APP_ARCH}" STREQUAL "")
-    error("Architecture not supported")
+    message(FATAL_ERROR  "Architecture not supported")
 endif()
 message("App architecture: ${APP_ARCH}")
 
@@ -48,6 +51,8 @@ if("${APP_ARCH}" STREQUAL "amd64")
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
+elseif("${APP_ARCH}" STREQUAL "x86")
+    add_definitions(-DDISABLE_X64)
 else()
     # This work on arm64
     set(CMAKE_CXX_FLAGS_RELEASE
