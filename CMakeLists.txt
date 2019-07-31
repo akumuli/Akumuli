@@ -15,6 +15,9 @@ endif()
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
     set(APP_ARCH "amd64")
 endif()
+if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "armv7l")
+    set(APP_ARCH "arm")
+endif()
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
     set(APP_ARCH "arm64")
 endif()
@@ -52,7 +55,18 @@ if("${APP_ARCH}" STREQUAL "amd64")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
 elseif("${APP_ARCH}" STREQUAL "x86")
+    # Use this flags only on amd64
+    set(CMAKE_CXX_FLAGS_RELEASE 
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
     add_definitions(-DDISABLE_X64)
+elseif("${APP_ARCH}" STREQUAL "arm")
+    # This work on arm
+    set(CMAKE_CXX_FLAGS_RELEASE
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
 else()
     # This work on arm64
     set(CMAKE_CXX_FLAGS_RELEASE
@@ -62,6 +76,10 @@ else()
 endif()
 
 if("${APP_ARCH}" STREQUAL "arm64")
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
+endif()
+
+if("${APP_ARCH}" STREQUAL "arm")
     add_definitions(-DDISABLE_EMBEDDED_ASM)
 endif()
 
