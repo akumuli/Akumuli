@@ -84,6 +84,11 @@ if("${APP_ARCH}" STREQUAL "arm")
     add_definitions(-DDISABLE_EMBEDDED_ASM)
 endif()
 
+if("${APP_ARCH}" STREQUAL "amd64")
+    add_definitions(-DDISABLEAVX)
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
+endif()
+
 set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)  
 set(Boost_USE_STATIC_RUNTIME OFF) 
