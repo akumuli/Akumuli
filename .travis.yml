@@ -68,7 +68,7 @@ matrix:
       services:
       - docker
       env:
-      - ARCH=i386
+      - CMAKE_SYSTEM_PROCESSOR=i386
       - DISTRIBUTION=ubuntu/xenial
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false

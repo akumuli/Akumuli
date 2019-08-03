@@ -10,7 +10,7 @@ add_definitions(-DAKU_VERSION="${APP_VERSION}")
 
 message("Processor: ${CMAKE_SYSTEM_PROCESSOR}")
 set(APP_ARCH "")
-if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i686")
+if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i386")
     set(APP_ARCH "x86")
 endif()
 if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
