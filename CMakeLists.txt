@@ -56,14 +56,14 @@ set(CMAKE_C_FLAGS_RELEASEGEN
  "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3 -std=c99")
 
 # Release flags
-if(APP_ARCH STREQUAL "amd64")
+if("${APP_ARCH}" STREQUAL "amd64")
     # Use this flags only on amd64
     set(CMAKE_CXX_FLAGS_RELEASE 
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
     message("amd64 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
-elseif(APP_ARCH STREQUAL "x86")
+elseif("${APP_ARCH}" STREQUAL "x86")
     # Use this flags only on amd64
     set(CMAKE_CXX_FLAGS_RELEASE 
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
@@ -73,7 +73,7 @@ elseif(APP_ARCH STREQUAL "x86")
     add_definitions(-DDISABLEAVX)
     add_definitions(-DDISABLE_EMBEDDED_ASM)
     message("i386 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
-elseif(APP_ARCH STREQUAL "arm64")
+elseif("${APP_ARCH}" STREQUAL "arm64")
     # This work on arm
     set(CMAKE_CXX_FLAGS_RELEASE
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
@@ -81,7 +81,7 @@ elseif(APP_ARCH STREQUAL "arm64")
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
     add_definitions(-DDISABLE_EMBEDDED_ASM)
     message("arm64 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
-elseif(APP_ARCH STREQUAL "arm")
+elseif("${APP_ARCH}" STREQUAL "arm")
     # This work on arm
     set(CMAKE_CXX_FLAGS_RELEASE
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
