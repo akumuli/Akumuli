@@ -68,7 +68,6 @@ matrix:
       services:
       - docker
       env:
-      - FORCE_ARCH=i386
       - DISTRIBUTION=ubuntu/xenial
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false
@@ -76,7 +75,7 @@ matrix:
       before_install:
       - docker pull i386/ubuntu:xenial
       script:
-      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli i386/ubuntu:xenial ./CI/runci.sh ubuntu-16.04
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e FORCE_ARCH=i386 -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli i386/ubuntu:xenial ./CI/runci.sh ubuntu-16.04
     # Container based 64-bit Xenial build
     - os: linux
       dist: trusty
