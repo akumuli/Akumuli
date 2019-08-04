@@ -7,6 +7,7 @@ set(APP_VERSION_PATCH "66")
 
 set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 message("Processor: ${CMAKE_SYSTEM_PROCESSOR}")
 set(FORCE_ARCH $ENV{FORCE_ARCH})
@@ -61,6 +62,7 @@ if(APP_ARCH STREQUAL "amd64")
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
+    message("amd64 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
 elseif(APP_ARCH STREQUAL "x86")
     # Use this flags only on amd64
     set(CMAKE_CXX_FLAGS_RELEASE 
@@ -70,26 +72,30 @@ elseif(APP_ARCH STREQUAL "x86")
     add_definitions(-DDISABLE_X64)
     add_definitions(-DDISABLEAVX)
     add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("i386 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
+elseif(APP_ARCH STREQUAL "arm64")
+    # This work on arm
+    set(CMAKE_CXX_FLAGS_RELEASE
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("arm64 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
 elseif(APP_ARCH STREQUAL "arm")
     # This work on arm
     set(CMAKE_CXX_FLAGS_RELEASE
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("arm CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
 else()
     # This work on arm64
     set(CMAKE_CXX_FLAGS_RELEASE
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
-endif()
-
-if(APP_ARCH STREQUAL "arm64")
-    add_definitions(-DDISABLE_EMBEDDED_ASM)
-endif()
-
-if(APP_ARCH STREQUAL "arm")
-    add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("unknown CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
 endif()
 
 set(Boost_USE_STATIC_LIBS OFF)
