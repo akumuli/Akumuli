@@ -17,7 +17,7 @@ if(FORCE_ARCH)
 else()
     set(APP_ARCH "")
     if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i386")
-        set(APP_ARCH "x86")
+        set(APP_ARCH "i386")
     endif()
     if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
         set(APP_ARCH "amd64")
@@ -63,7 +63,7 @@ if("${APP_ARCH}" STREQUAL "amd64")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
     message("amd64 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
-elseif("${APP_ARCH}" STREQUAL "x86")
+elseif("${APP_ARCH}" STREQUAL "i386")
     # Use this flags only on amd64
     set(CMAKE_CXX_FLAGS_RELEASE 
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
