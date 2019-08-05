@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.67
+--------------
+
+IMPROVEMENT
+
+* Introduce event storage 
+
 Version 0.8.66
 --------------
 

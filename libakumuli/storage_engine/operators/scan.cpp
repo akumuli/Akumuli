@@ -87,4 +87,63 @@ std::tuple<aku_Status, size_t> ChainMaterializer::read(u8 *dest, size_t dest_siz
     return std::make_tuple(status, accsz*sizeof(aku_Sample));
 }
 
+// ////////////////////// //
+// EventChainMaterializer //
+// ////////////////////// //
+
+EventChainMaterializer::EventChainMaterializer(std::vector<aku_ParamId>&& ids, std::vector<std::unique_ptr<BinaryDataOperator>>&& it)
+    : iters_(std::move(it))
+    , ids_(std::move(ids))
+    , pos_(0)
+    , available_(false)
+{
+}
+
+std::tuple<aku_Status, size_t> EventChainMaterializer::read(u8 *dest, size_t dest_size) {
+    aku_Status status = AKU_ENO_DATA;
+    size_t accsz = 0;  // accumulated size
+
+    while (pos_ < iters_.size()) {
+        if (!available_) {
+            curr_id_ = ids_[pos_];
+            size_t ressz = 0;
+            std::tie(status, ressz) = iters_[pos_]->read(&curr_ts_, &curr_, 1);
+            if (ressz == 0) {
+                pos_++;
+                continue;  // Try to fetch value from the next iterator
+            }
+            if (status != AKU_ENO_DATA) {
+                if (status != AKU_SUCCESS) {
+                    // Stop iteration on error!
+                    break;
+                }
+            }
+            available_ = true;
+        }
+        // Convert vectors to series of samples
+        if (available_) {
+            // Compute required space
+            u32 space_needed = sizeof(aku_Sample) + curr_.size();
+            if (dest_size < space_needed) {
+                break;
+            }
+            aku_Sample sample = {};
+            sample.payload.type = AKU_PAYLOAD_EVENT;
+            sample.payload.size = static_cast<u16>(space_needed);  // guaranteed to fit u16
+            sample.paramid = curr_id_;
+            sample.timestamp = curr_ts_;
+            sample.payload.float64 = 0;
+            memcpy(dest, &sample, sizeof(sample));
+            dest += sizeof(sample);
+            memcpy(dest, curr_.data(), curr_.size());
+            dest += curr_.size();
+            dest_size -= space_needed;
+            accsz += space_needed;
+            available_ = false;
+        }
+    }
+    return std::make_tuple(status, accsz);
+}
+
+
 }}  // namespace

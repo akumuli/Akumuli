@@ -219,6 +219,10 @@ class RESPProtocolParser {
     std::shared_ptr<DbSession>         consumer_;
     Logger                             logger_;
     SeriesIdMap                        idmap_;
+    u64                                paramids_[AKU_LIMITS_MAX_ROW_WIDTH];
+    double                             values_  [AKU_LIMITS_MAX_ROW_WIDTH];
+    std::string                        events_  [AKU_LIMITS_MAX_ROW_WIDTH];
+    std::vector<char>                  event_buf_;
 
     //! Process frames from queue
     void worker();
@@ -228,7 +232,7 @@ class RESPProtocolParser {
 
     bool parse_dict(RESPStream& stream);
     bool parse_timestamp(RESPStream& stream, aku_Sample& sample);
-    bool parse_values(RESPStream& stream, double* values, int nvalues);
+    bool parse_values(RESPStream& stream, const aku_ParamId *ids, double* values, std::string *events, int nvalues);
     int parse_ids(RESPStream& stream, aku_ParamId* ids, int nvalues);
     /**
      * @brief Cache series id mapping

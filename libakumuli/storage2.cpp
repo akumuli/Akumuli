@@ -471,7 +471,7 @@ Storage::Storage(const char* path, const aku_FineTuneParams &params)
     }
     cstore_ = std::make_shared<StorageEngine::ColumnStore>(bstore_);
     // Update series matcher
-    boost::optional<u64> baseline = metadata_->get_prev_largest_id();
+    boost::optional<i64> baseline = metadata_->get_prev_largest_id();
     if (baseline) {
         global_matcher_.series_id = baseline.get() + 1;
     }
@@ -1292,10 +1292,10 @@ std::tuple<aku_Status, bool> Storage::init_series_id(const char* begin, const ch
     bool create_new = false;
     {
         std::lock_guard<std::mutex> guard(lock_);
-        id = global_matcher_.match(begin, end);
+        id = static_cast<u64>(global_matcher_.match(begin, end));
         if (id == 0) {
             // create new series
-            id = global_matcher_.add(begin, end);
+            id = static_cast<u64>(global_matcher_.add(begin, end));
             metadata_->add_rescue_point(id, std::vector<u64>());
             create_new = true;
         }
@@ -1313,12 +1313,12 @@ std::tuple<aku_Status, bool> Storage::init_series_id(const char* begin, const ch
 }
 
 int Storage::get_series_name(aku_ParamId id, char* buffer, size_t buffer_size, PlainSeriesMatcher *local_matcher) {
-    auto str = global_matcher_.id2str(id);
+    auto str = global_matcher_.id2str(static_cast<i64>(id));
     if (str.first == nullptr) {
         return 0;
     }
     // copy value to local matcher
-    local_matcher->_add(str.first, str.first + str.second, id);
+    local_matcher->_add(str.first, str.first + str.second, static_cast<i64>(id));
     // copy the string to out buffer
     if (str.second > buffer_size) {
         return -1*static_cast<int>(str.second);
@@ -1344,6 +1344,12 @@ std::tuple<aku_Status, std::string>
     case QueryKind::SELECT_META:
         Logger::msg(AKU_LOG_ERROR, "Metadata query is not supported");
         return std::make_tuple(AKU_EBAD_ARG, "Metadata query is not supported");
+    case QueryKind::SELECT_EVENTS:
+        std::tie(status, *req, error_msg) = QueryParser::parse_select_events_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, error_msg.data());
+        }
+        break;
     case QueryKind::AGGREGATE:
         std::tie(status, *req, error_msg) = QueryParser::parse_aggregate_query(ptree, global_matcher_);
         if (status != AKU_SUCCESS) {

@@ -16,6 +16,7 @@ enum class QueryKind {
     JOIN,
     AGGREGATE,
     GROUP_AGGREGATE,
+    SELECT_EVENTS,
 };
 
 class SeriesRetreiver {
@@ -73,6 +74,12 @@ struct QueryParser {
       * @param matcher is a global matcher
       */
     static std::tuple<aku_Status, std::vector<aku_ParamId>, ErrorMsg> parse_search_query(boost::property_tree::ptree const& ptree, SeriesMatcher const& matcher);
+
+    /** Parse events search query.
+      * @param ptree is a property tree generated from query json
+      * @param matcher is a global matcher
+      */
+    static std::tuple<aku_Status, ReshapeRequest, ErrorMsg> parse_select_events_query(boost::property_tree::ptree const& ptree, const SeriesMatcher &matcher);
 
     /**
      * @brief Parse suggest query

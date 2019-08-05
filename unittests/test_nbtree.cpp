@@ -2797,3 +2797,185 @@ void test_nbtree_summary(size_t nremoved, size_t nblocks) {
 BOOST_AUTO_TEST_CASE(Test_nbtree_summary_0) {
     test_nbtree_summary(10, 20);
 }
+
+void test_nbtree_append_event(aku_Timestamp begin,
+                              aku_Timestamp end,
+                              aku_Timestamp step,
+                              std::vector<aku_Timestamp> query_from,
+                              std::vector<aku_Timestamp> query_to)
+{
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    std::map<aku_Timestamp, std::string> allevents;
+
+    for (auto i = begin; i < end; i+=step) {
+        std::string event = "event-" + std::to_string(i);
+        auto outres = collection->append(i, reinterpret_cast<const u8*>(event.data()), static_cast<u32>(event.size()));
+        if (outres == NBTreeAppendResult::FAIL_BAD_ID ||
+            outres == NBTreeAppendResult::FAIL_BAD_VALUE ||
+            outres == NBTreeAppendResult::FAIL_LATE_WRITE) {
+            BOOST_FAIL("Append operation failed");
+        }
+        allevents[i] = event;
+    }
+
+    BOOST_REQUIRE_EQUAL(query_from.size(), query_to.size());
+
+    for (u32 i = 0; i < query_from.size(); i++) {
+        auto from = query_from.at(i);
+        auto to = query_to.at(i);
+        auto it = collection->search_binary(from, to);
+
+        // Verify
+        aku_Status itstatus = AKU_SUCCESS;
+        size_t itsize;
+        aku_Timestamp ts;
+        std::string line;
+        size_t elem_num = 0;
+        while (itstatus == AKU_SUCCESS) {
+            std::tie(itstatus, itsize) = it->read(&ts, &line, 1);
+            BOOST_REQUIRE(itsize < 2);
+            if (itsize) {
+                elem_num++;
+                BOOST_REQUIRE(allevents.count(ts));
+                auto expected = allevents[ts];
+                BOOST_REQUIRE_EQUAL(expected, line);
+                if (from < to) {
+                    BOOST_REQUIRE_GE(ts, from);
+                    BOOST_REQUIRE_LE(ts, to);
+                }
+                else {
+                    BOOST_REQUIRE_LE(ts, from);
+                    BOOST_REQUIRE_GE(ts, to);
+                }
+            }
+        }
+        BOOST_REQUIRE_NE(elem_num, 0);
+    }
+
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_0) {
+    std::vector<aku_Timestamp> from = {
+        1100000, 1300000, 1300000, 100,
+    };
+    std::vector<aku_Timestamp> to = {
+        2100000, 2300000, 400000 , 2100000,
+    };
+    test_nbtree_append_event(1000000, 3000000, 20000, from, to);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_1) {
+    std::vector<aku_Timestamp> from = {
+        2100000, 2300000, 4000000, 2100000,
+    };
+    std::vector<aku_Timestamp> to = {
+        1100000, 1300000, 1300000, 100,
+    };
+    test_nbtree_append_event(1000000, 3000000, 20000, from, to);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_2) {
+    std::vector<aku_Timestamp> from = {
+        1100000, 1300000, 1300000, 100,
+    };
+    std::vector<aku_Timestamp> to = {
+        2100000, 2300000, 4000001, 2100000,
+    };
+    test_nbtree_append_event(1000001, 3000001, 20020, from, to);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_3) {
+    std::vector<aku_Timestamp> from = {
+        2100000, 2300000, 4000001, 2100000,
+    };
+    std::vector<aku_Timestamp> to = {
+        1100000, 1300000, 1300000, 100,
+    };
+    test_nbtree_append_event(1000001, 3000001, 20020, from, to);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_4) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    u8 data;
+    auto outres = collection->append(1000000, &data, 0);
+    BOOST_REQUIRE(outres == NBTreeAppendResult::FAIL_BAD_VALUE);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_5) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;  // should be empty at first
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    u8 data = 1;
+    auto outres = collection->append(1000000, &data, 1);
+    BOOST_REQUIRE(outres == NBTreeAppendResult::OK);
+    outres = collection->append(1000010, &data, 1);
+    BOOST_REQUIRE(outres == NBTreeAppendResult::FAIL_LATE_WRITE);
+}
+
+void two_event_append_test(std::string first, std::string second) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    aku_Timestamp ts1 = 1000000;
+    aku_Timestamp ts2 = 2000000;
+    auto outres = collection->append(ts1, reinterpret_cast<const u8*>(first.data()), first.size());
+    BOOST_REQUIRE(outres == NBTreeAppendResult::OK);
+    outres = collection->append(ts2, reinterpret_cast<const u8*>(second.data()), second.size());  // This message spans block boundary
+    BOOST_REQUIRE(outres == NBTreeAppendResult::OK);
+
+    // Read back
+    auto it = collection->search_binary(ts1, ts2 + 1000);
+
+    // Verify
+    aku_Status    itstatus = AKU_SUCCESS;
+    size_t        itsize;
+    aku_Timestamp ts;
+    std::string   line;
+
+    // Read first
+    std::tie(itstatus, itsize) = it->read(&ts, &line, 1);
+    BOOST_REQUIRE_EQUAL(itsize, 1);
+    BOOST_REQUIRE_EQUAL(line, first);
+    BOOST_REQUIRE_EQUAL(ts, ts1);
+    // Read 2nd
+    std::tie(itstatus, itsize) = it->read(&ts, &line, 1);
+    BOOST_REQUIRE_EQUAL(itsize, 1);
+    BOOST_REQUIRE_EQUAL(line, second);
+    BOOST_REQUIRE_EQUAL(ts, ts2);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_6) {
+    std::string   shortevt(512, 's');
+    std::string   longevt(AKU_LIMITS_MAX_EVENT_LEN, 'l');
+    two_event_append_test(shortevt, longevt);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_7) {
+    std::string   first(AKU_LIMITS_MAX_EVENT_LEN, '1');
+    std::string   second(AKU_LIMITS_MAX_EVENT_LEN, '2');
+    two_event_append_test(first, second);
+}
+
+BOOST_AUTO_TEST_CASE(Test_nbtree_append_event_8) {
+    std::shared_ptr<BlockStore> bstore = BlockStoreBuilder::create_memstore();
+    std::vector<LogicAddr> addrlist;
+    auto collection = std::make_shared<NBTreeExtentsList>(42, addrlist, bstore);
+    collection->force_init();
+
+    aku_Timestamp ts1 = 1000000;
+    std::string   event(4097, 'l'); // event too large
+    auto outres = collection->append(ts1, reinterpret_cast<const u8*>(event.data()), event.size());
+    BOOST_REQUIRE(outres == NBTreeAppendResult::FAIL_BAD_VALUE);
+}

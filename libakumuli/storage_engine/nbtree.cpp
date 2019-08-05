@@ -1552,6 +1552,119 @@ std::tuple<aku_Status, size_t> NBTreeSBlockCandlesticsIter::read(aku_Timestamp *
 }
 
 
+// ////////////////// //
+// BinaryDataIterator //
+// ////////////////// //
+
+class BinaryDataIterator : public BinaryDataOperator {
+    std::unique_ptr<RealValuedOperator> base_;
+    enum {
+        BUF_SIZE = 1 + (AKU_LIMITS_MAX_EVENT_LEN / 8)
+    };
+    std::array<aku_Timestamp, BUF_SIZE> ts_;
+    std::array<double, BUF_SIZE> xs_;
+    size_t pos_;
+    size_t cap_;
+    size_t top_;
+    std::string curr_;
+    size_t curr_size_;
+    aku_Timestamp outts_;
+public:
+    BinaryDataIterator(std::unique_ptr<RealValuedOperator> base)
+    : base_(std::move(base))
+    , pos_(0)
+    , cap_(0)
+    , top_(0)
+    {
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, std::string *destval, size_t size) {
+        size_t outsz = 0;
+        while (size) {
+            if (pos_ == top_) {
+                // copy tail
+                assert(top_ <= cap_);
+                u32 taillen = cap_ - top_;
+                std::rotate(ts_.begin(), ts_.begin() + top_, ts_.begin() + cap_);
+                std::rotate(xs_.begin(), xs_.begin() + top_, xs_.begin() + cap_);
+
+                aku_Status status;
+                std::tie(status, cap_) = base_->read(ts_.data() + taillen,
+                                                     xs_.data() + taillen,
+                                                     BUF_SIZE   - taillen);
+                cap_ += taillen;
+                top_ = 0;
+                pos_ = 0;
+                assert(cap_ <= BUF_SIZE);
+                if (status == AKU_ENO_DATA) {
+                    if (cap_ == 0) {
+                        return std::make_pair(status, outsz);
+                    }
+                }
+                else if (status != AKU_SUCCESS) {
+                    return std::make_pair(status, 0);
+                }
+                if (get_direction() == Direction::BACKWARD) {
+                    // Rotate elements
+                    for (u32 end = 0; end < cap_; end++) {
+                        if (ts_.at(end) % 1000 == 0) {
+                            std::reverse(xs_.begin() + top_, xs_.begin() + end + 1);
+                            std::reverse(ts_.begin() + top_, ts_.begin() + end + 1);
+                            top_ = end + 1;
+                        }
+                    }
+                    assert(top_ <= cap_);
+                    if (cap_ == taillen && top_ == 0) {
+                        // Progress until no element could be produced.
+                        cap_ = 0;
+                    }
+                }
+                else {
+                    top_ = cap_;
+                }
+            }
+            while (size && pos_ < top_) {
+                char body[8];
+                auto t = ts_[pos_];
+                auto x = xs_[pos_];
+                pos_++;
+                if (t % 1000 == 0) {
+                    u32 tsoff;
+                    u32 size;
+                    memcpy(body, &x, 8);
+                    memcpy(&size, body, 4);
+                    memcpy(&tsoff, body + 4, 4);
+                    curr_.clear();
+                    curr_.reserve(static_cast<size_t>(size));
+                    outts_ = t + tsoff;
+                    curr_size_ = size;
+                } else {
+                    memcpy(body, &x, 8);
+                    int niter = static_cast<int>(std::min(sizeof(body), curr_size_ - curr_.size()));
+                    for (int i = 0; i < niter; i++) {
+                        if (curr_size_ > curr_.size()) {
+                            curr_.push_back(body[i]);
+                        }
+                    }
+                    if (curr_size_ == curr_.size()) {
+                        *destts++ = outts_;
+                        *destval++ = curr_;
+                        size--;
+                        outsz++;
+
+                    }
+                }
+            }
+        }
+        return std::make_pair(AKU_SUCCESS, outsz);
+    }
+
+    virtual Direction get_direction() {
+        return base_->get_direction() == RealValuedOperator::Direction::FORWARD ? Direction::FORWARD : Direction::BACKWARD;
+    }
+};
+
+
 // ///////// //
 // IOVecLeaf //
 
@@ -3433,6 +3546,52 @@ NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, double value, boo
     return result;
 }
 
+NBTreeAppendResult NBTreeExtentsList::append(aku_Timestamp ts, const u8* blob, u32 size) {
+    // Correct event serialization sequence:
+    // TS       - 0         1           2           3
+    // value    - head      blob[0..7]  blob[8..15] blob[16, 23]...
+    // Timestamps will be rounded up to 1us. The reminder will be stored in
+    // head element with the size.
+    // It won't be possible to have events with nanosecond resolution.
+    // Size of the event is limited by 999 8-byte elements.
+    // If during write failure occured the reader partial write is possible so
+    // reader should check for this by comparing size at TS[0] and real element
+    // count.
+    // The head element contains size [0..999] and time offset [0, 999].
+    // Original timestamp can be restored using the time offset.
+    if (size == 0 || size > AKU_LIMITS_MAX_EVENT_LEN) {
+        return NBTreeAppendResult::FAIL_BAD_VALUE;
+    }
+    aku_Timestamp basets = (ts / 1000) * 1000;
+    u32 tsrem = static_cast<u32>(ts - basets);  // Invariant: (ts - basets) < 1000
+    double head;
+    char buf[sizeof(head)] = {};
+    memcpy(buf, &size, 4);
+    memcpy(buf + 4, &tsrem, 4);
+    memcpy(&head, buf, sizeof(head));
+    NBTreeAppendResult outres = append(basets++, head, false);
+    if (outres == NBTreeAppendResult::FAIL_BAD_ID ||
+        outres == NBTreeAppendResult::FAIL_BAD_VALUE ||
+        outres == NBTreeAppendResult::FAIL_LATE_WRITE) {
+        return outres;
+    }
+    for (u32 i = 0; i < size; i += 8) {
+        double element = 0;
+        memcpy(&element, blob + i, std::min(8u, size - i));
+        auto res = append(basets++, element, false);
+        switch (res) {
+        case NBTreeAppendResult::OK:
+            continue;
+        case NBTreeAppendResult::OK_FLUSH_NEEDED:
+            outres = res;
+            break;
+        default:
+            return res;
+        };
+    }
+    return outres;
+}
+
 bool NBTreeExtentsList::append(const SubtreeRef &pl) {
     // NOTE: this method should be called by extents which
     //       is called by another `append` overload recursively
@@ -3705,6 +3864,31 @@ std::unique_ptr<RealValuedOperator> NBTreeExtentsList::search(aku_Timestamp begi
     std::unique_ptr<RealValuedOperator> concat;
     concat.reset(new ChainOperator(std::move(iterators)));
     return concat;
+}
+
+std::unique_ptr<BinaryDataOperator> NBTreeExtentsList::search_binary(aku_Timestamp begin, aku_Timestamp end) const {
+    if (!initialized_) {
+        const_cast<NBTreeExtentsList*>(this)->force_init();
+    }
+    SharedLock lock(lock_);
+    std::vector<std::unique_ptr<RealValuedOperator>> iterators;
+    if (begin < end) {
+        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+            iterators.push_back((*it)->search(begin, end));
+        }
+    } else {
+        for (auto const& root: extents_) {
+            iterators.push_back(root->search(begin, end));
+        }
+    }
+    if (iterators.size() == 1) {
+        std::unique_ptr<BinaryDataOperator> res(new BinaryDataIterator(std::move(iterators.front())));
+        return res;
+    }
+    std::unique_ptr<RealValuedOperator> concat;
+    concat.reset(new ChainOperator(std::move(iterators)));
+    std::unique_ptr<BinaryDataOperator> res(new BinaryDataIterator(std::move(concat)));
+    return res;
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeExtentsList::filter(aku_Timestamp begin,

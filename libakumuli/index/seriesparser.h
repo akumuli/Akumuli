@@ -31,7 +31,7 @@
 
 namespace Akumuli {
 
-static const u64 AKU_STARTING_SERIES_ID = 1024;
+static const i64 AKU_STARTING_SERIES_ID = 1024;
 
 struct SeriesMatcherBase {
 
@@ -39,31 +39,31 @@ struct SeriesMatcherBase {
 
     /** Add new string to matcher.
       */
-    virtual u64 add(const char* begin, const char* end) = 0;
+    virtual i64 add(const char* begin, const char* end) = 0;
 
     /** Add value to matcher. This function should be
       * used only to load data to matcher. Internal
       * `series_id` counter wouldn't be affected by this call, so
       * it should be set up propertly in constructor.
       */
-    virtual void _add(std::string series, u64 id) = 0;
+    virtual void _add(std::string series, i64 id) = 0;
 
     /** Add value to matcher. This function should be
       * used only to load data to matcher. Internal
       * `series_id` counter wouldn't be affected by this call, so
       * it should be set up propertly in constructor.
       */
-    virtual void _add(const char* begin, const char* end, u64 id) = 0;
+    virtual void _add(const char* begin, const char* end, i64 id) = 0;
 
     /**
       * Match string and return it's id. If string is new return 0.
       */
-    virtual u64 match(const char* begin, const char* end) const = 0;
+    virtual i64 match(const char* begin, const char* end) const = 0;
 
     /**
       * Convert id to string
       */
-    virtual StringT id2str(u64 tokenid) const = 0;
+    virtual StringT id2str(i64 tokenid) const = 0;
 };
 
 /** Series index. Can be used to retreive series names and ids by tags.
@@ -73,7 +73,7 @@ struct SeriesMatcherBase {
   */
 struct SeriesMatcher : SeriesMatcherBase {
     //! Series name descriptor - pointer to string, length, series id.
-    typedef std::tuple<const char*, int, u64> SeriesNameT;
+    typedef std::tuple<const char*, int, i64> SeriesNameT;
 
     typedef StringTools::TableT TableT;
     typedef StringTools::InvT   InvT;
@@ -81,46 +81,47 @@ struct SeriesMatcher : SeriesMatcherBase {
     Index                    index;      //! Series name index and storage
     TableT                   table;      //! Series table (name to id mapping)
     InvT                     inv_table;  //! Ids table (id to name mapping)
-    u64                      series_id;  //! Series ID counter
+    i64                      series_id;  //! Series ID counter, positive values
+                                         //! are resurved for metrics, negative are for events
     std::vector<SeriesNameT> names;      //! List of recently added names
     mutable std::mutex       mutex;      //! Mutex for shared data
 
-    SeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
+    SeriesMatcher(i64 starting_id=AKU_STARTING_SERIES_ID);
 
     /** Add new string to matcher.
       */
-    u64 add(const char* begin, const char* end);
+    i64 add(const char* begin, const char* end);
 
     /** Add value to matcher. This function should be
       * used only to load data to matcher. Internal
       * `series_id` counter wouldn't be affected by this call, so
       * it should be set up propertly in constructor.
       */
-    void _add(std::string series, u64 id);
+    void _add(std::string series, i64 id);
 
     /** Add value to matcher. This function should be
       * used only to load data to matcher. Internal
       * `series_id` counter wouldn't be affected by this call, so
       * it should be set up propertly in constructor.
       */
-    void _add(const char* begin, const char* end, u64 id);
+    void _add(const char* begin, const char* end, i64 id);
 
     /**
       * Match string and return it's id. If string is new return 0.
       */
-    u64 match(const char* begin, const char* end) const;
+    i64 match(const char* begin, const char* end) const;
 
     /**
       * Convert id to string
       */
-    StringT id2str(u64 tokenid) const;
+    StringT id2str(i64 tokenid) const;
 
     /** Push all new elements to the buffer.
       * @param buffer is an output parameter that will receive new elements
       */
     void pull_new_names(std::vector<SeriesNameT>* buffer);
 
-    std::vector<u64> get_all_ids() const;
+    std::vector<i64> get_all_ids() const;
 
     std::vector<SeriesNameT> search(IndexQueryNodeBase const& query) const;
 
@@ -147,7 +148,7 @@ struct SeriesMatcher : SeriesMatcherBase {
   */
 struct PlainSeriesMatcher : SeriesMatcherBase {
     //! Series name descriptor - pointer to string, length, series id.
-    typedef std::tuple<const char*, int, u64> SeriesNameT;
+    typedef std::tuple<const char*, int, i64> SeriesNameT;
 
     typedef StringTools::TableT TableT;
     typedef StringTools::InvT   InvT;
@@ -156,43 +157,43 @@ struct PlainSeriesMatcher : SeriesMatcherBase {
     LegacyStringPool         pool;       //! String pool that stores time-series
     TableT                   table;      //! Series table (name to id mapping)
     InvT                     inv_table;  //! Ids table (id to name mapping)
-    u64                      series_id;  //! Series ID counter
+    i64                      series_id;  //! Series ID counter
     std::vector<SeriesNameT> names;      //! List of recently added names
     mutable std::mutex       mutex;      //! Mutex for shared data
 
-    PlainSeriesMatcher(u64 starting_id=AKU_STARTING_SERIES_ID);
+    PlainSeriesMatcher(i64 starting_id=AKU_STARTING_SERIES_ID);
 
     /** Add new string to matcher.
       */
-    u64 add(const char* begin, const char* end);
+    i64 add(const char* begin, const char* end);
 
     /** Add value to matcher. This function should be
       * used only to load data to matcher. Internal
       * `series_id` counter wouldn't be affected by this call, so
       * it should be set up propertly in constructor.
       */
-    void _add(std::string series, u64 id);
+    void _add(std::string series, i64 id);
 
     /** Add value to matcher. This function should be
       * used only to load data to matcher. Internal
       * `series_id` counter wouldn't be affected by this call, so
       * it should be set up propertly in constructor.
       */
-    void _add(const char*  begin, const char* end, u64 id);
+    void _add(const char*  begin, const char* end, i64 id);
 
     /** Match string and return it's id. If string is new return 0.
       */
-    u64 match(const char* begin, const char* end) const;
+    i64 match(const char* begin, const char* end) const;
 
     //! Convert id to string
-    StringT id2str(u64 tokenid) const;
+    StringT id2str(i64 tokenid) const;
 
     /** Push all new elements to the buffer.
       * @param buffer is an output parameter that will receive new elements
       */
     void pull_new_names(std::vector<SeriesNameT>* buffer);
 
-    std::vector<u64> get_all_ids() const;
+    std::vector<i64> get_all_ids() const;
 
     std::vector<SeriesNameT> regex_match(const char* rexp) const;
 
