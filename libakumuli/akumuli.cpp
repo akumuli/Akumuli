@@ -308,7 +308,7 @@ aku_Status aku_create_database( const char     *base_file_name
                               , i32             num_volumes
                               , bool            allocate)
 {
-    static const u64 vol_size = 4096ul*1024*1024; // pages (4GB total)
+    static const u64 vol_size = 4096ull*1024*1024; // pages (4GB total)
     return aku_create_database_ex(base_file_name, metadata_path, volumes_path, num_volumes, vol_size, allocate);
 }
 
