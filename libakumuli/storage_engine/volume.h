@@ -281,7 +281,7 @@ public:
       * @param capacity Size of the volume in blocks.
       * @throw std::runtime_exception on error.
       */
-    static void create_new(const char* path, size_t capacity);
+    static void create_new(const char* path, u64 capacity);
 
     /** Open volume.
       * @throw std::runtime_error on error.
@@ -289,7 +289,7 @@ public:
       * @param pos Write position inside volume (in blocks).
       * @return New instance of V2::Volume.
       */
-    static std::unique_ptr<Volume> open_existing(const char* path, size_t pos);
+    static std::unique_ptr<Volume> open_existing(const char* path, u64 pos);
 
     // Mutators
 
