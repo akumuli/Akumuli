@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.68
+--------------
+
+IMPROVEMENT
+
+* Support 32-bit ARM/Intel processors
+
 Version 0.8.67
 --------------
 

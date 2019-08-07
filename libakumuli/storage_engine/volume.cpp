@@ -329,11 +329,11 @@ static AprFilePtr _open_file(const char* file_name, apr_pool_t* pool) {
 }
 
 
-static size_t _get_file_size(apr_file_t* file) {
+static u64 _get_file_size(apr_file_t* file) {
     apr_finfo_t info;
     auto status = apr_file_info_get(&info, APR_FINFO_SIZE, file);
     panic_on_error(status, "Can't get file info");
-    return static_cast<size_t>(info.size);
+    return static_cast<u64>(info.size);
 }
 
 /** This function creates file with specified size
@@ -588,12 +588,12 @@ void Volume::reset() {
     //synced_pos_ = 0;
 }
 
-void Volume::create_new(const char* path, size_t capacity) {
+void Volume::create_new(const char* path, u64 capacity) {
     auto size = capacity * AKU_BLOCK_SIZE;
     _create_file(path, size);
 }
 
-std::unique_ptr<Volume> Volume::open_existing(const char* path, size_t pos) {
+std::unique_ptr<Volume> Volume::open_existing(const char* path, u64 pos) {
     std::unique_ptr<Volume> result;
     result.reset(new Volume(path, pos));
     return result;
@@ -648,7 +648,7 @@ aku_Status Volume::read_block(u32 ix, u8* dest) const {
     }
     if (mmap_ptr_) {
         // Fast path
-        size_t offset = ix * AKU_BLOCK_SIZE;
+        u64 offset = ix * AKU_BLOCK_SIZE;
         memcpy(dest, mmap_ptr_ + offset, AKU_BLOCK_SIZE);
         return AKU_SUCCESS;
     }
@@ -679,7 +679,7 @@ std::tuple<aku_Status, const u8*> Volume::read_block_zero_copy(u32 ix) const {
     }
     if (mmap_ptr_) {
         // Fast path
-        size_t offset = ix * AKU_BLOCK_SIZE;
+        u64 offset = ix * AKU_BLOCK_SIZE;
         auto ptr = mmap_ptr_ + offset;
         return std::make_tuple(AKU_SUCCESS, ptr);
     }
