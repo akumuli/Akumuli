@@ -8,6 +8,10 @@ IMPROVEMENT
 
 * Support 32-bit ARM/Intel processors
 
+BUG FIX
+
+* Fix #312 integer overflow in RESP parser
+
 Version 0.8.67
 --------------
 
