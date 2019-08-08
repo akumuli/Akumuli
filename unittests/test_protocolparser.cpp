@@ -174,6 +174,26 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
     BOOST_REQUIRE_THROW(parser.parse_next(buf, 29), RESPError);
 }
 
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_larget_integer) {
+    std::string message = "+1\r\n:18446744073709551615\r\n+34.5\r\n";
+    std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+    RESPProtocolParser parser(cons);
+    parser.start();
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, message.data(), message.length());
+    BOOST_REQUIRE_NO_THROW(parser.parse_next(buf, static_cast<u32>(message.length())));
+}
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_integer) {
+    std::string message = "+1\r\n:20000000000000000000\r\n+34.5\r\n";
+    std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+    RESPProtocolParser parser(cons);
+    parser.start();
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, message.data(), message.length());
+    BOOST_REQUIRE_THROW(parser.parse_next(buf, static_cast<u32>(message.length())), RESPError);
+}
+
 
 BOOST_AUTO_TEST_CASE(Test_protocol_parse_dictionary_error_format) {
     {
