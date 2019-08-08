@@ -471,10 +471,10 @@ void cmd_run_server() {
                 log_ccr = std::max(log_ccr, ccr);
             }
             bool use_wal = true;
-            if (wal_config.nvolumes < 0 || wal_config.nvolumes > 1000) {
+            if (wal_config.nvolumes < 0 || wal_config.nvolumes > 1000 || wal_config.nvolumes == 1) {
                 std::stringstream fmt;
                 fmt << "**ERROR** invalid configuration value WAL.nvolumes = " << wal_config.nvolumes
-                    << ", value should not exceed 1000";
+                    << ", value should not exceed 1000 or be equal to 1";
                 std::cout << cli_format(fmt.str()) << std::endl;
                 use_wal = false;
             }

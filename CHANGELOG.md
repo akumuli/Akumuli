@@ -11,6 +11,7 @@ IMPROVEMENT
 BUG FIX
 
 * Fix #312 integer overflow in RESP parser
+* Prohibit use of WAL with single volume
 
 Version 0.8.67
 --------------
