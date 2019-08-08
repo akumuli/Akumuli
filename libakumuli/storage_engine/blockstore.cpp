@@ -32,7 +32,7 @@ namespace StorageEngine {
 static u64 hash32(u32 value, u32 bits, u64 seed) {
     // hashes x strongly universally into N bits
     // using the random seed.
-    static const u64 a = (1ul << 32) - 1;
+    static const u64 a = (1ull << 32) - 1;
     return (a * value + seed) >> (64-bits);
 }
 

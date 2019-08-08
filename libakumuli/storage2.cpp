@@ -1534,7 +1534,7 @@ aku_Status Storage::new_database( const char     *base_file_name
                                 , bool            allocate)
 {
     // Check for max volume size
-    const u64 MAX_SIZE = 0x100000000 * 4096 - 1;  // 15TB
+    const u64 MAX_SIZE = 0x100000000ull * 4096 - 1;  // 15TB
     const u64 MIN_SIZE = 0x100000;  // 1MB
     if (volume_size > MAX_SIZE) {
         Logger::msg(AKU_LOG_ERROR, "Volume size is too big: " + std::to_string(volume_size) + ", it can't be greater than 15TB");
@@ -1544,7 +1544,7 @@ aku_Status Storage::new_database( const char     *base_file_name
         return AKU_EBAD_ARG;
     }
     // Create volumes and metapage
-    u32 volsize = static_cast<u32>(volume_size / 4096);
+    u32 volsize = static_cast<u32>(volume_size / 4096ull);
 
     boost::filesystem::path volpath(volumes_path);
     boost::filesystem::path metpath(metadata_path);

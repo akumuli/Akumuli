@@ -53,13 +53,13 @@ struct ConsumerMock : DbSession {
     }
 
     virtual int name_to_param_id_list(const char* begin, const char* end, aku_ParamId* ids, u32 cap) override {
-        auto nelem = std::count(begin, end, '|') + 1;
+        u32 nelem = std::count(begin, end, '|') + 1;
         if (nelem > cap) {
             return -1*static_cast<int>(nelem);
         }
         const char* it_begin = begin;
         const char* it_end = begin;
-        for (int i = 0; i < nelem; i++) {
+        for (u32 i = 0; i < nelem; i++) {
             //move it_end
             while(*it_end != '|' && it_end < end) {
                 it_end++;
@@ -172,6 +172,26 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_format) {
     auto buf = parser.get_next_buffer();
     memcpy(buf, messages, 29);
     BOOST_REQUIRE_THROW(parser.parse_next(buf, 29), RESPError);
+}
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_larget_integer) {
+    std::string message = "+1\r\n:18446744073709551615\r\n+34.5\r\n";
+    std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+    RESPProtocolParser parser(cons);
+    parser.start();
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, message.data(), message.length());
+    BOOST_REQUIRE_NO_THROW(parser.parse_next(buf, static_cast<u32>(message.length())));
+}
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parse_error_integer) {
+    std::string message = "+1\r\n:20000000000000000000\r\n+34.5\r\n";
+    std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+    RESPProtocolParser parser(cons);
+    parser.start();
+    auto buf = parser.get_next_buffer();
+    memcpy(buf, message.data(), message.length());
+    BOOST_REQUIRE_THROW(parser.parse_next(buf, static_cast<u32>(message.length())), RESPError);
 }
 
 

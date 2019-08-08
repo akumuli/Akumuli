@@ -43,7 +43,7 @@ RESPStream::Type RESPStream::next_type() const {
 }
 
 std::tuple<bool, u64> RESPStream::_read_int_body() {
-    const int MAX_DIGITS = 84 + 2;  // Maximum number of decimal digits in u64 + \r\n
+    const int MAX_DIGITS = 20 + 2;  // Maximum number of decimal digits in u64 + \r\n
     Byte buf[MAX_DIGITS];
     u64 result = 0;
     int res = stream_->read_line(buf, MAX_DIGITS);
@@ -59,7 +59,21 @@ std::tuple<bool, u64> RESPStream::_read_int_body() {
         Byte c = buf[i];
         // c must be in [0x30:0x39] range
         if (c <= 0x39 && c >= 0x30) {
-            result = result*10 + static_cast<u32>(c & 0x0F);
+            static const u64 max_u64 = std::numeric_limits<u64>::max();
+            static const u64 max_mul = std::numeric_limits<u64>::max() / 10;
+            if (result > max_mul) {
+                // Invalid input, integer overflow
+                auto ctx = stream_->get_error_context("integer overflow");
+                BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+            }
+            result *= 10;
+            u32 digit = static_cast<u32>(c & 0x0F);
+            if (result > (max_u64 - digit)) {
+                // Invalid input, integer overflow
+                auto ctx = stream_->get_error_context("integer overflow");
+                BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+            }
+            result += digit;
         } else if (c == '\n') {
             // Note: I decided to support both \r\n and \n line endings in Akumuli for simplicity.
             return std::make_tuple(true, result);

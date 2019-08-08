@@ -53,7 +53,7 @@ LegacyStringPool::StringT LegacyStringPool::add(const char* begin, const char* e
     const char* p = &bin->back();
     p -= size - 1;
     int token_size = static_cast<int>(end - begin);
-    std::atomic_fetch_add(&counter, 1ul);
+    std::atomic_fetch_add(&counter, (size_t)1);
     return std::make_pair(p, token_size);
 }
 
@@ -161,7 +161,7 @@ u64 StringPool::add(const char* begin, const char* end) {
         bin->push_back(*i);
     }
     bin->push_back('\0');
-    std::atomic_fetch_add(&counter, 1ul);
+    std::atomic_fetch_add(&counter, (size_t)1);
     return bin_index*MAX_BIN_SIZE + offset;
 }
 

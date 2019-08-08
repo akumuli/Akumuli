@@ -211,7 +211,7 @@ struct MergeMaterializer : ColumnMaterializer {
                 outpos += sizeof(sample);
             } else {
                 // Output buffer is fully consumed
-                return std::make_tuple(AKU_SUCCESS, size);
+                return std::make_tuple(AKU_SUCCESS, outpos);
             }
             heap.pop();
             ranges_[index].advance();

@@ -26,7 +26,7 @@ struct TupleOutputUtils {
         } bits;
         bits.u = (1ull << tup.size()) - 1;
         // Save number of elements in the bitflags
-        bits.u |= tup.size() << 58;
+        bits.u |= (u64)tup.size() << 58;
         return bits.d;
     }
 

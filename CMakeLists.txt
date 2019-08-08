@@ -3,20 +3,37 @@ cmake_minimum_required(VERSION 2.8)
 
 set(APP_VERSION_MAJOR "0")
 set(APP_VERSION_MINOR "8")
-set(APP_VERSION_PATCH "67")
+set(APP_VERSION_PATCH "68")
 
 set(APP_VERSION "${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}.${APP_VERSION_PATCH}")
 add_definitions(-DAKU_VERSION="${APP_VERSION}")
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
-set(APP_ARCH "")
-if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
-    set(APP_ARCH "amd64")
-endif()
-if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
-    set(APP_ARCH "arm64")
-endif()
-if("${APP_ARCH}" STREQUAL "")
-    error("Architecture not supported")
+message("Processor: ${CMAKE_SYSTEM_PROCESSOR}")
+set(FORCE_ARCH $ENV{FORCE_ARCH})
+message("Force arch: ${FORCE_ARCH}")
+if(FORCE_ARCH)
+    set(APP_ARCH "${FORCE_ARCH}")
+else()
+    set(APP_ARCH "")
+    if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i386")
+        set(APP_ARCH "i386")
+    endif()
+    if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "i686")
+        set(APP_ARCH "i386")
+    endif()
+    if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
+        set(APP_ARCH "amd64")
+    endif()
+    if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "armv7l")
+        set(APP_ARCH "arm")
+    endif()
+    if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
+        set(APP_ARCH "arm64")
+    endif()
+    if("${APP_ARCH}" STREQUAL "")
+        message(FATAL_ERROR  "Architecture not supported")
+    endif()
 endif()
 message("App architecture: ${APP_ARCH}")
 
@@ -48,16 +65,40 @@ if("${APP_ARCH}" STREQUAL "amd64")
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
+    message("amd64 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
+elseif("${APP_ARCH}" STREQUAL "i386")
+    # Use this flags only on amd64
+    set(CMAKE_CXX_FLAGS_RELEASE 
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
+    add_definitions(-DDISABLE_X64)
+    add_definitions(-DDISABLEAVX)
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("i386 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
+elseif("${APP_ARCH}" STREQUAL "arm64")
+    # This work on arm
+    set(CMAKE_CXX_FLAGS_RELEASE
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("arm64 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
+elseif("${APP_ARCH}" STREQUAL "arm")
+    # This work on arm
+    set(CMAKE_CXX_FLAGS_RELEASE
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("arm CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
 else()
     # This work on arm64
     set(CMAKE_CXX_FLAGS_RELEASE
      "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
-endif()
-
-if("${APP_ARCH}" STREQUAL "arm64")
-    add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("unknown CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
 endif()
 
 set(Boost_USE_STATIC_LIBS OFF)

@@ -81,7 +81,7 @@ aku_Timestamp DateTimeUtil::from_iso_string(const char* iso_str) {
             BOOST_THROW_EXCEPTION(error);
         }
         long parsed_len = end - iso_str;
-        if (parsed_len < len) {
+        if ((u32)parsed_len < len) {
             BadDateTimeFormat error("unknown timestamp format");
             BOOST_THROW_EXCEPTION(error);
         }

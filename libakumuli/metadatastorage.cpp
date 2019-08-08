@@ -50,7 +50,7 @@ void AprHandleDeleter::operator()(apr_dbd_t* handle) {
 
 static void callback_adapter(void*, const char* input) {
     std::string msg;
-    size_t len_limit = std::min(0x2000ul, msg.max_size());
+    size_t len_limit = std::min(size_t(0x2000u), msg.max_size());
     size_t len = std::min(strlen(input), len_limit);
     msg.assign(input, input + len);
     if (len == len_limit) {

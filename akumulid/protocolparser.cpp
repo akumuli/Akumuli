@@ -875,7 +875,7 @@ OpenTSDBResponse OpenTSDBProtocolParser::worker() {
                 Byte* endptr;
                 const int eix = timestamp_size - timestamp_trailing;
                 pbuf[eix] = '\0';  // timestamp_trailing can't be 0 or less
-                auto result = strtoul(pbuf, &endptr, 10);
+                auto result = strtoull(pbuf, &endptr, 10);
                 pbuf[eix] = ' ';
                 if (result == 0) {
                     err = true;
