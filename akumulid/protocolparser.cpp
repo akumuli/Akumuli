@@ -509,15 +509,20 @@ bool RESPProtocolParser::parse_values(RESPStream&        stream,
                     }
                 }
             } else {
-                if (next == RESPStream::STRING) {
-                    if (!parse_event_value(i)) {
+                switch (next) {
+                    case RESPStream::STRING:
+                        if (!parse_event_value(i)) {
+                            return false;
+                        }
+                        break;
+                    case RESPStream::_AGAIN:
                         return false;
+                    default: {
+                        std::string msg;
+                        size_t pos;
+                        std::tie(msg, pos) = rdbuf_.get_error_context("unexpected event format");
+                        BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                     }
-                } else {
-                    std::string msg;
-                    size_t pos;
-                    std::tie(msg, pos) = rdbuf_.get_error_context("unexpected event format");
-                    BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
                 }
             }
         }
