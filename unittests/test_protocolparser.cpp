@@ -16,14 +16,25 @@ struct ConsumerMock : DbSession {
     std::vector<aku_ParamId>     param_;
     std::vector<aku_Timestamp>   ts_;
     std::vector<double>          data_;
+    std::vector<std::string>     event_;
 
     virtual ~ConsumerMock() {}
 
     virtual aku_Status write(const aku_Sample &sample) override {
-        param_.push_back(sample.paramid);
-        ts_.push_back(sample.timestamp);
-        data_.push_back(sample.payload.float64);
-        return AKU_SUCCESS;
+        if (sample.payload.type == AKU_PAYLOAD_FLOAT) {
+            param_.push_back(sample.paramid);
+            ts_.push_back(sample.timestamp);
+            data_.push_back(sample.payload.float64);
+            return AKU_SUCCESS;
+        }
+        else if (sample.payload.type == AKU_PAYLOAD_EVENT) {
+            param_.push_back(sample.paramid);
+            ts_.push_back(sample.timestamp);
+            int len = sample.payload.size - sizeof(aku_Sample);
+            event_.push_back(std::string(sample.payload.data, sample.payload.data + len));
+            return AKU_SUCCESS;
+        }
+        return AKU_EBAD_ARG;
     }
 
     virtual std::shared_ptr<DbCursor> query(std::string) override {
@@ -46,9 +57,16 @@ struct ConsumerMock : DbSession {
     }
 
     virtual aku_Status series_to_param_id(const char* begin, size_t sz, aku_Sample* sample) override {
+        int sign = 1;
+        if (*begin == '!' && sz > 1) {
+            // Events names start with !
+            begin++;
+            sz--;
+            sign = -1;
+        }
         std::string num(begin, begin + sz);
         boost::algorithm::trim(num);
-        sample->paramid = boost::lexical_cast<u64>(num);
+        sample->paramid = sign * boost::lexical_cast<u64>(num);
         return AKU_SUCCESS;
     }
 
@@ -64,8 +82,14 @@ struct ConsumerMock : DbSession {
             while(*it_end != '|' && it_end < end) {
                 it_end++;
             }
+            int sign = 1;
+            if (*it_begin == '!') {
+                // Events names start with !
+                it_begin++;
+                sign = -1;
+            }
             std::string val(it_begin, it_end);
-            ids[i] = boost::lexical_cast<u64>(val);
+            ids[i] = sign * boost::lexical_cast<u64>(val);
             it_end++;
             it_begin = it_end;
         }
@@ -383,6 +407,85 @@ BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_dict) {
         BOOST_REQUIRE_EQUAL(cons->param_[3], 222);
         BOOST_REQUIRE_EQUAL(cons->ts_[3], 54);
         BOOST_REQUIRE_CLOSE_FRACTION(cons->data_[3], 301, 1e-9);
+    };
+
+    size_t msglen = strlen(message);
+
+    for (int i = 0; i < 100; i++) {
+        size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
+        size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        find_framing_issues<RESPProtocolParser>(message, msglen, pivot1, pivot2, pred, cons);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_event) {
+
+    const char *message = "+!1\r\n:2\r\n+event1\r\n"
+                          "+!2\r\n:7\r\n+event2\r\n"
+                          "+!3\r\n:11\r\n+event3\r\n"
+                          "+!4\r\n:15\r\n+event4\r\n";
+
+    auto pred = [] (std::shared_ptr<ConsumerMock> cons) {
+
+        BOOST_REQUIRE_EQUAL(cons->param_.size(), 4);
+        // 0
+        BOOST_REQUIRE_EQUAL(cons->param_[0], static_cast<u64>(-1));
+        BOOST_REQUIRE_EQUAL(cons->ts_[0], 2);
+        BOOST_REQUIRE_EQUAL(cons->event_[0], "event1");
+        // 1
+        BOOST_REQUIRE_EQUAL(cons->param_[1], static_cast<u64>(-2));
+        BOOST_REQUIRE_EQUAL(cons->ts_[1], 7);
+        BOOST_REQUIRE_EQUAL(cons->event_[1], "event2");
+        // 2
+        BOOST_REQUIRE_EQUAL(cons->param_[2], static_cast<u64>(-3));
+        BOOST_REQUIRE_EQUAL(cons->ts_[2], 11);
+        BOOST_REQUIRE_EQUAL(cons->event_[2], "event3");
+        // 3
+        BOOST_REQUIRE_EQUAL(cons->param_[3], static_cast<u64>(-4));
+        BOOST_REQUIRE_EQUAL(cons->ts_[3], 15);
+        BOOST_REQUIRE_EQUAL(cons->event_[3], "event4");
+    };
+
+    size_t msglen = strlen(message);
+
+    for (int i = 0; i < 100; i++) {
+        size_t pivot1 = 1 + static_cast<size_t>(rand()) % (msglen / 2);
+        size_t pivot2 = 1+ static_cast<size_t>(rand()) % (msglen - pivot1 - 2) + pivot1;
+        std::shared_ptr<ConsumerMock> cons(new ConsumerMock);
+        find_framing_issues<RESPProtocolParser>(message, msglen, pivot1, pivot2, pred, cons);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(Test_protocol_parser_framing_event_bulk) {
+
+    const char *message = "+!1|!2|!3|!4\r\n"
+                          ":9\r\n"
+                          "*4\r\n"
+                          "+event1\r\n"
+                          "+event2\r\n"
+                          "+event3\r\n"
+                          "+event4\r\n";
+
+    auto pred = [] (std::shared_ptr<ConsumerMock> cons) {
+
+        BOOST_REQUIRE_EQUAL(cons->param_.size(), 4);
+        // 0
+        BOOST_REQUIRE_EQUAL(cons->param_[0], static_cast<u64>(-1));
+        BOOST_REQUIRE_EQUAL(cons->ts_[0], 9);
+        BOOST_REQUIRE_EQUAL(cons->event_[0], "event1");
+        // 1
+        BOOST_REQUIRE_EQUAL(cons->param_[1], static_cast<u64>(-2));
+        BOOST_REQUIRE_EQUAL(cons->ts_[1], 9);
+        BOOST_REQUIRE_EQUAL(cons->event_[1], "event2");
+        // 2
+        BOOST_REQUIRE_EQUAL(cons->param_[2], static_cast<u64>(-3));
+        BOOST_REQUIRE_EQUAL(cons->ts_[2], 9);
+        BOOST_REQUIRE_EQUAL(cons->event_[2], "event3");
+        // 3
+        BOOST_REQUIRE_EQUAL(cons->param_[3], static_cast<u64>(-4));
+        BOOST_REQUIRE_EQUAL(cons->ts_[3], 9);
+        BOOST_REQUIRE_EQUAL(cons->event_[3], "event4");
     };
 
     size_t msglen = strlen(message);
