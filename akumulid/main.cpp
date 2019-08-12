@@ -117,7 +117,10 @@ nvolumes=4
 struct ConfigFile {
     typedef boost::property_tree::ptree PTree;
 
-    static boost::filesystem::path default_config_path() {
+    static boost::filesystem::path get_config_path(boost::optional<std::string> config_path) {
+        if (config_path) {
+            return expand_path(*config_path);
+        }
         auto path2cfg = boost::filesystem::path(getenv("HOME"));
         path2cfg /= ".akumulid";
         return path2cfg;
@@ -448,9 +451,9 @@ void create_db_files(const char* path,
 /** Read configuration file and run server.
   * If config file can't be found - report error.
   */
-void cmd_run_server() {
+void cmd_run_server(boost::optional<std::string> cmd_config_path) {
 
-    auto config_path            = ConfigFile::default_config_path();
+    auto config_path            = ConfigFile::get_config_path(cmd_config_path);
     auto config                 = ConfigFile::read_config_file(config_path);
     auto path                   = ConfigFile::get_path(config);
     auto ingestion_servers      = ConfigFile::get_server_settings(config);
@@ -537,9 +540,8 @@ void cmd_run_server() {
 
 /** Create database command.
   */
-void cmd_create_database(bool test_db=false, bool allocate=false) {
-    auto config_path = ConfigFile::default_config_path();
-
+void cmd_create_database(boost::optional<std::string> cmd_config_path, bool test_db=false, bool allocate=false) {
+    auto config_path = ConfigFile::get_config_path(cmd_config_path);
     auto config      = ConfigFile::read_config_file(config_path);
     auto path        = ConfigFile::get_path(config);
     auto volumes     = ConfigFile::get_nvolumes(config);
@@ -552,12 +554,11 @@ void cmd_create_database(bool test_db=false, bool allocate=false) {
     create_db_files(path.c_str(), volumes, volsize, allocate);
 }
 
-void cmd_delete_database() {
-    auto config_path = ConfigFile::default_config_path();
-
-    auto config     = ConfigFile::read_config_file(config_path);
-    auto path       = ConfigFile::get_path(config);
-    auto wal_path   = ConfigFile::get_wal_settings(config).path;
+void cmd_delete_database(boost::optional<std::string> cmd_config_path) {
+    auto config_path = ConfigFile::get_config_path(cmd_config_path);
+    auto config      = ConfigFile::read_config_file(config_path);
+    auto path        = ConfigFile::get_path(config);
+    auto wal_path    = ConfigFile::get_wal_settings(config).path;
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (boost::filesystem::exists(full_path)) {
@@ -583,10 +584,10 @@ void cmd_delete_database() {
     }
 }
 
-void cmd_dump_debug_information(const char* outfname) {
-    auto config_path = ConfigFile::default_config_path();
-    auto config     = ConfigFile::read_config_file(config_path);
-    auto path       = ConfigFile::get_path(config);
+void cmd_dump_debug_information(boost::optional<std::string> cmd_config_path, const char* outfname) {
+    auto config_path = ConfigFile::get_config_path(cmd_config_path);
+    auto config      = ConfigFile::read_config_file(config_path);
+    auto path        = ConfigFile::get_path(config);
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (boost::filesystem::exists(full_path)) {
@@ -615,10 +616,10 @@ void cmd_dump_debug_information(const char* outfname) {
     }
 }
 
-void cmd_dump_recovery_debug_information(const char* outfname) {
-    auto config_path = ConfigFile::default_config_path();
-    auto config     = ConfigFile::read_config_file(config_path);
-    auto path       = ConfigFile::get_path(config);
+void cmd_dump_recovery_debug_information(boost::optional<std::string> cmd_config_path, const char* outfname) {
+    auto config_path = ConfigFile::get_config_path(cmd_config_path);
+    auto config      = ConfigFile::read_config_file(config_path);
+    auto path        = ConfigFile::get_path(config);
 
     auto full_path = boost::filesystem::path(path) / "db.akumuli";
     if (boost::filesystem::exists(full_path)) {
@@ -665,17 +666,10 @@ int main(int argc, char** argv) {
     try {
         std::locale::global(std::locale("C"));
 
-        aku_initialize(&panic_handler, &static_logger);
-
-        // Init logger
-        auto path = ConfigFile::default_config_path();
-        if (boost::filesystem::exists(path)) {
-            Logger::init(path.c_str());
-        }
-
         po::options_description cli_only_options;
         cli_only_options.add_options()
                 ("help", "Produce help message")
+                ("config", po::value<std::string>(), "Path to configuration file")
                 ("create", "Create database")
                 ("allocate", "Preallocate disk space")
                 ("delete", "Delete database")
@@ -691,6 +685,24 @@ int main(int argc, char** argv) {
         po::store(po::parse_command_line(argc, argv, cli_only_options), vm);
         po::notify(vm);
 
+        if (vm.count("help")) {
+            rich_print(CLI_HELP_MESSAGE);
+            exit(EXIT_SUCCESS);
+        }
+
+        boost::optional<std::string> cmd_config_path;
+        if (vm.count("config")) {
+            cmd_config_path = vm["config"].as<std::string>();
+        }
+
+        aku_initialize(&panic_handler, &static_logger);
+
+        // Init logger
+        auto path = ConfigFile::get_config_path(cmd_config_path);
+        if (boost::filesystem::exists(path)) {
+            Logger::init(path.c_str());
+        }
+
         std::stringstream header;
 #ifndef AKU_VERSION
         header << "\n\nStarted\n\n";
@@ -703,11 +715,6 @@ int main(int argc, char** argv) {
         }
         header << "\n\n";
         logger.info() << header.str();
-
-        if (vm.count("help")) {
-            rich_print(CLI_HELP_MESSAGE);
-            exit(EXIT_SUCCESS);
-        }
 
         if (vm.count("init")) {
             bool disable_wal = vm.count("disable-wal");
@@ -733,26 +740,26 @@ int main(int argc, char** argv) {
             bool allocate = false;
             if(vm.count("allocate"))
                 allocate = true;
-            cmd_create_database(false, allocate);
+            cmd_create_database(cmd_config_path, false, allocate);
             exit(EXIT_SUCCESS);
         }
 
         if (vm.count("CI")) {
-            cmd_create_database(true);
+            cmd_create_database(cmd_config_path, true);
             exit(EXIT_SUCCESS);
         }
 
         if (vm.count("delete")) {
-            cmd_delete_database();
+            cmd_delete_database(cmd_config_path);
             exit(EXIT_SUCCESS);
         }
 
         if (vm.count("debug-dump")) {
             auto path = vm["debug-dump"].as<std::string>();
             if (path == "stdout") {
-                cmd_dump_debug_information(nullptr);
+                cmd_dump_debug_information(cmd_config_path, nullptr);
             } else {
-                cmd_dump_debug_information(path.c_str());
+                cmd_dump_debug_information(cmd_config_path, path.c_str());
             }
             exit(EXIT_SUCCESS);
         }
@@ -760,14 +767,14 @@ int main(int argc, char** argv) {
         if (vm.count("debug-recovery-dump")) {
             auto path = vm["debug-recovery-dump"].as<std::string>();
             if (path == "stdout") {
-                cmd_dump_recovery_debug_information(nullptr);
+                cmd_dump_recovery_debug_information(cmd_config_path, nullptr);
             } else {
-                cmd_dump_recovery_debug_information(path.c_str());
+                cmd_dump_recovery_debug_information(cmd_config_path, path.c_str());
             }
             exit(EXIT_SUCCESS);
         }
 
-        cmd_run_server();
+        cmd_run_server(cmd_config_path);
 
         logger.info() << "\n\nClean exit\n\n";
 
