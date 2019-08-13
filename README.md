@@ -8,24 +8,29 @@ The word "akumuli" can be translated from Esperanto as "accumulate".
 Features
 -------
 
-* True column-oriented format (not PAX).
+* Column-oriented storage.
 * Based on novel [LSM and B+tree hybrid datastructure](http://akumuli.org/akumuli/2017/04/29/nbplustree/) with multiversion concurrency control (no concurrency bugs, parallel writes, optimized for SSD and NVMe).
+* Supports both metrics and arbitrary events.
+* Fast and effecient compression algorithm that outperforms 'Gorilla' time-series compression.
 * Crash safety and recovery.
 * Fast aggregation without pre-configured rollups or materialized views.
-* Queries can be executed without decompressing the data.
-* Fast compression algorithm (dictionary + entropy) with small memory overhead (about 2.5 bytes per element on appropriate data).
+* Many queries can be executed without decompressing the data.
 * Compressed in-memory storage for recent data.
-* Can be used as a server application or an embedded library.
-* Simple query language based on JSON and HTTP.
+* Can be used as a server application or embedded library.
+* Simple API based on JSON and HTTP.
 * Fast range scans and joins, read speed doesn't depend on database cardinality.
-* Fast data ingestion over the network:
-  * 4.5M data points per second on 8-core Intel Xeon E5-2670 v2 (m3.2xlarge EC2 instance).
-  * 16.1M data points per second on 32-core Intel Xeon E5-2680 v2 (c3.8xlarge EC2 instance).
-* Query results are streamed to client using the chunked transfer encoding of the HTTP protocol.
-* Decompression algorithm and input parsers were fuzz-tested.
+* Fast data ingestion:
+  * 5.4M writes/sec on DigitalOcean droplet with 8-cores 32GB of RAM (using only 6 cores)
+  * 4.6M writes/sec on DigitalOcean droplet with 8-cores 32GB of RAM (6 cores with enabled WAL)
+  * 16.1M writes/sec on 32-core Intel Xeon E5-2680 v2 (c3.8xlarge EC2 instance).
+* Queries are executed lazily. Query results are produced as long as client reads them.
+* Compression algorithm and input parsers are fuzz-tested on every code change.
 * Grafana [datasource](https://github.com/akumuli/akumuli-datasource) plugin.
-* Fast and compact inverted index for series lookup.
+* Fast and compact inverted index for time-series lookup.
 
+
+Roadmap
+------
 
 |Storage engine features        |Current version|Future versions|
 |-------------------------------|---------------|---------------|
@@ -36,7 +41,7 @@ Features
 |Compression                    |+              |+              |
 |Tags                           |+              |+              |
 |High-throughput ingestion      |+              |+              |
-|High cardinality               |-              |+              |
+|High cardinality               |+              |+              |
 |Crash recovery                 |+              |+              |
 |Incremental backup             |-              |+              |
 |Clustering                     |-              |+              |
@@ -60,6 +65,13 @@ Features
 |Filter & group-aggregate       |+              |+              |
 |Filter & join                  |+              |+              |
 
+
+
+Supported Architectures
+-----------------------
+
+Akumuli supports 64 and 32-bit Intel processors. It also works on 64 and 32-bit ARM processors but these architectures are not covered by continous integration.
+
 Gettings Started
 ----------------
 * You can find [documentation](https://akumuli.gitbook.io/docs) here
@@ -73,12 +85,15 @@ Supported Platforms
 Pre-built [Debian/RPM packages](https://packagecloud.io/Lazin/Akumuli) for the following platforms
 are available via packagecloud:
 
-* Ubuntu 14.04
-* Ubuntu 16.04
-* Ubuntu 18.04
-* Debian Jessie
-* Debian Stretch
-* CentOS 7
+* AMD 64 Ubuntu 14.04
+* AMD 64 Ubuntu 16.04
+* AMD 64 Ubuntu 18.04
+* AMD 64 Debian Jessie
+* AMD 64 Debian Stretch
+* AMD 64 CentOS 7
+* ARM 64 Ubuntu 16.04
+* ARM 64 Ubuntu 18.04
+* ARM 64 CentOS 7
 
 Docker image is availabe through [Docker Hub](https://hub.docker.com/r/akumuli/akumuli/tags/).
 
