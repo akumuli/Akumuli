@@ -1,6 +1,17 @@
 Release notes
 =============
 
+Version 0.8.69
+--------------
+
+IMPROVEMENT
+
+* Add --config command line argument
+
+BUG FIX
+
+* Fix framing issue in RESP protocol parser
+
 Version 0.8.68
 --------------
 
