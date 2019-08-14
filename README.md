@@ -1,4 +1,4 @@
-README [![Build Status](https://travis-ci.org/akumuli/Akumuli.svg?branch=master)](https://travis-ci.org/akumuli/Akumuli) [![Coverity Scan Build Status](https://scan.coverity.com/projects/8879/badge.svg)](https://scan.coverity.com/projects/akumuli) [![Join the chat at https://gitter.im/akumuli/Akumuli](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/akumuli/Akumuli?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+README [![Build Status](https://travis-ci.org/akumuli/Akumuli.svg?branch=master)](https://travis-ci.org/akumuli/Akumuli) [![Coverity Scan Build Status](https://scan.coverity.com/projects/8879/badge.svg)](https://scan.coverity.com/projects/akumuli) 
 ======
 
 **Akumuli** is a time-series database for modern hardware. 
@@ -10,7 +10,7 @@ Features
 
 * Column-oriented storage.
 * Based on novel [LSM and B+tree hybrid datastructure](http://akumuli.org/akumuli/2017/04/29/nbplustree/) with multiversion concurrency control (no concurrency bugs, parallel writes, optimized for SSD and NVMe).
-* Supports both metrics and arbitrary events.
+* Supports both metrics and events.
 * Fast and effecient compression algorithm that outperforms 'Gorilla' time-series compression.
 * Crash safety and recovery.
 * Fast aggregation without pre-configured rollups or materialized views.
@@ -66,12 +66,6 @@ Roadmap
 |Filter & join                  |+              |+              |
 
 
-
-Supported Architectures
------------------------
-
-Akumuli supports 64 and 32-bit Intel processors. It also works on 64 and 32-bit ARM processors but these architectures are not covered by continous integration.
-
 Gettings Started
 ----------------
 * You can find [documentation](https://akumuli.gitbook.io/docs) here
@@ -81,6 +75,8 @@ Gettings Started
 
 Supported Platforms
 -------------------
+
+Akumuli supports 64 and 32-bit Intel processors. It also works on 64 and 32-bit ARM processors but these architectures are not covered by continous integration.
 
 Pre-built [Debian/RPM packages](https://packagecloud.io/Lazin/Akumuli) for the following platforms
 are available via packagecloud:
