@@ -463,7 +463,7 @@ void MetadataStorage::upsert_rescue_points(std::unordered_map<aku_ParamId, std::
             "INSERT OR REPLACE INTO akumuli_rescue_points (storage_id, addr0, addr1, addr2, addr3, addr4, addr5, addr6, addr7) VALUES ";
         size_t ix = 0;
         for (auto const& kv: batch) {
-            query << "( " << kv.first;
+            query << "( " << static_cast<i64>(kv.first);
             for (auto id: kv.second) {
                 if (id == ~0ull) {
                     // Values that big can't be represented in SQLite, -1 value should be interpreted as EMPTY_ADDR,
@@ -527,26 +527,8 @@ void MetadataStorage::insert_new_names(std::vector<SeriesT> &&items) {
 }
 
 boost::optional<i64> MetadataStorage::get_prev_largest_id() {
-    auto query_max = "SELECT max(storage_id) FROM akumuli_series;";
-    auto query_min = "SELECT max(storage_id) FROM akumuli_series;";
+    auto query_max = "SELECT max(abs(storage_id)) FROM akumuli_series;";
     i64 max_id = 0;
-    i64 min_id = 0;
-    try {
-        auto results = select_query(query_min);
-        auto row = results.at(0);
-        if (row.empty()) {
-            AKU_PANIC("Can't get max storage id");
-        }
-        auto id = row.at(0);
-        if (id == "") {
-            // Table is empty
-            return boost::optional<i64>();
-        }
-        min_id = boost::lexical_cast<i64>(id);
-    } catch(...) {
-        Logger::msg(AKU_LOG_ERROR, boost::current_exception_diagnostic_information().c_str());
-        AKU_PANIC("Can't get max storage id");
-    }
     try {
         auto results = select_query(query_max);
         auto row = results.at(0);
@@ -563,7 +545,7 @@ boost::optional<i64> MetadataStorage::get_prev_largest_id() {
         Logger::msg(AKU_LOG_ERROR, boost::current_exception_diagnostic_information().c_str());
         AKU_PANIC("Can't get max storage id");
     }
-    return std::max(max_id, -1*min_id);
+    return max_id;
 }
 
 aku_Status MetadataStorage::load_matcher_data(SeriesMatcherBase& matcher) {
@@ -575,7 +557,7 @@ aku_Status MetadataStorage::load_matcher_data(SeriesMatcherBase& matcher) {
                 continue;
             }
             auto series = row.at(0);
-            auto id = boost::lexical_cast<u64>(row.at(1));
+            auto id = boost::lexical_cast<i64>(row.at(1));
             matcher._add(series, id);
         }
     } catch(...) {
