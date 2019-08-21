@@ -222,7 +222,8 @@ class RESPProtocolParser {
     u64                                paramids_[AKU_LIMITS_MAX_ROW_WIDTH];
     double                             values_  [AKU_LIMITS_MAX_ROW_WIDTH];
     std::string                        events_  [AKU_LIMITS_MAX_ROW_WIDTH];
-    std::vector<char>                  event_buf_;
+    std::vector<char>                  event_inp_buf_;
+    std::vector<char>                  event_out_buf_;
 
     //! Process frames from queue
     void worker();

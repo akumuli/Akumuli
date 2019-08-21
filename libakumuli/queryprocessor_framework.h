@@ -175,7 +175,7 @@ struct Node;
 
 struct MutableSample {
     static constexpr size_t MAX_PAYLOAD_SIZE = sizeof(double)*58;
-    static constexpr size_t MAX_SIZE = sizeof(aku_Sample) + MAX_PAYLOAD_SIZE;
+    static constexpr size_t MAX_SIZE = 1024 + sizeof(aku_Sample);
     union Payload {
         aku_Sample sample;
         char       raw[MAX_SIZE];
@@ -184,6 +184,7 @@ struct MutableSample {
     u32            size_;
     u32            bitmap_;
     const bool     istuple_;
+    const aku_Sample *orig_;
 
     MutableSample(const aku_Sample* source);
 

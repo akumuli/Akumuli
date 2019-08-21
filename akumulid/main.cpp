@@ -505,7 +505,7 @@ void cmd_run_server(boost::optional<std::string> cmd_config_path) {
         }
 
         auto connection  = std::make_shared<AkumuliConnection>(full_path.c_str(), params);
-        auto qproc       = std::make_shared<QueryProcessor>(connection, 1000);
+        auto qproc       = std::make_shared<QueryProcessor>(connection, 2048);
 
         SignalHandler sighandler;
         int srvid = 0;

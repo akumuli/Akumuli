@@ -415,7 +415,8 @@ bool RESPProtocolParser::parse_values(RESPStream&        stream,
         return true;
     };
     auto parse_event_value = [&](int at) {
-        std::tie(success, bytes_read) = stream.read_string(buf, buflen);
+        event_inp_buf_.resize(RESPStream::STRING_LENGTH_MAX);
+        std::tie(success, bytes_read) = stream.read_string(event_inp_buf_.data(), event_inp_buf_.size());
         if (!success) {
             return false;
         }
@@ -425,7 +426,8 @@ bool RESPProtocolParser::parse_values(RESPStream&        stream,
             std::tie(msg, pos) = rdbuf_.get_error_context("event value is too big");
             BOOST_THROW_EXCEPTION(ProtocolParserError(msg, pos));
         }
-        events[at].assign(buf, buf + bytes_read);
+        events[at].assign(event_inp_buf_.data(),
+                          event_inp_buf_.data() + bytes_read);
         return true;
     };
     auto next = stream.next_type();
@@ -601,8 +603,8 @@ void RESPProtocolParser::worker() {
                 evt.payload.size = static_cast<u16>(len);  // len guaranteed to fit
                 evt.timestamp = sample.timestamp;
                 evt.paramid = paramids_[i];
-                event_buf_.resize(len);
-                auto pevt = reinterpret_cast<aku_Sample*>(event_buf_.data());
+                event_out_buf_.resize(len);
+                auto pevt = reinterpret_cast<aku_Sample*>(event_out_buf_.data());
                 memcpy(pevt, &evt, sizeof(evt));
                 memcpy(pevt->payload.data, events_[i].data(), events_[i].size());
                 status = consumer_->write(*pevt);
