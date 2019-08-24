@@ -164,6 +164,17 @@ public:
         });
     }
 
+    aku_Status filter_events(std::vector<aku_ParamId> const& ids,
+                    aku_Timestamp begin,
+                    aku_Timestamp end,
+                    const std::string& expr,
+                    std::vector<std::unique_ptr<BinaryDataOperator>>* dest) const
+    {
+        return iterate(ids, dest, [begin, end](const NBTreeExtentsList& elist) {
+            return std::make_tuple(AKU_SUCCESS, elist.search_binary(begin, end));
+        });
+    }
+
     aku_Status filter(std::vector<aku_ParamId> const& ids,
                       aku_Timestamp begin,
                       aku_Timestamp end,

@@ -22,6 +22,7 @@
 #include <sstream>
 #include <stack>
 #include <array>
+#include <regex>
 
 // App
 #include "nbtree.h"
@@ -1661,6 +1662,47 @@ public:
 
     virtual Direction get_direction() {
         return base_->get_direction() == RealValuedOperator::Direction::FORWARD ? Direction::FORWARD : Direction::BACKWARD;
+    }
+};
+
+class BinaryDataFilter : public BinaryDataOperator {
+    std::unique_ptr<BinaryDataIterator> it_;
+    std::regex regex_;
+public:
+    BinaryDataFilter(std::unique_ptr<RealValuedIterator> base, const std::string& regex)
+    : it_(std::move(base))
+    , regex_(regex, std::regex_constants::ECMAScript)
+    {
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, std::string *destval, size_t size) {
+        aku_Timestamp ts;
+        std::string   xs;
+        aku_Status    status;
+        size_t        len;
+        size_t        outlen = 0;
+        while (size != 0) {
+            std::tie(status, len) = it_->read(&ts, &xs, 1);
+            if (status == AKU_ENO_DATA) {
+                return std::make_tuple(AKU_SUCCESS, outlen);
+            }
+            else if (status != AKU_SUCCESS) {
+                return std::make_pair(status, 0);
+            }
+            else {
+                if (std::regex_search(xs, regex_)) {
+                    outlen++;
+                    *destts = ts;
+                    *destxs = xs;
+                    size--;
+                }
+            }
+        }
+
+    }
+
+    virtual Direction get_direction() {
+        return it_->get_direction();
     }
 };
 
