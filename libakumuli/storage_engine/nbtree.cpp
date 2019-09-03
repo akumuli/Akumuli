@@ -1666,16 +1666,16 @@ public:
 };
 
 class BinaryDataFilter : public BinaryDataOperator {
-    std::unique_ptr<BinaryDataIterator> it_;
+    std::unique_ptr<BinaryDataOperator> it_;
     std::regex regex_;
 public:
-    BinaryDataFilter(std::unique_ptr<RealValuedIterator> base, const std::string& regex)
+    BinaryDataFilter(std::unique_ptr<BinaryDataOperator> base, const std::string& regex)
     : it_(std::move(base))
-    , regex_(regex, std::regex_constants::ECMAScript)
+    , regex_(regex.data(), std::regex_constants::ECMAScript)
     {
     }
 
-    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, std::string *destval, size_t size) {
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, std::string *destxs, size_t size) {
         aku_Timestamp ts;
         std::string   xs;
         aku_Status    status;
@@ -1683,13 +1683,14 @@ public:
         size_t        outlen = 0;
         while (size != 0) {
             std::tie(status, len) = it_->read(&ts, &xs, 1);
-            if (status == AKU_ENO_DATA) {
-                return std::make_tuple(AKU_SUCCESS, outlen);
+            if (status != AKU_SUCCESS) {
+                if (status == AKU_ENO_DATA && len == 0) {
+                    break;
+                } else if (status != AKU_ENO_DATA){
+                    break;
+                }
             }
-            else if (status != AKU_SUCCESS) {
-                return std::make_pair(status, 0);
-            }
-            else {
+            if (len == 1) {
                 if (std::regex_search(xs, regex_)) {
                     outlen++;
                     *destts = ts;
@@ -1698,7 +1699,7 @@ public:
                 }
             }
         }
-
+        return std::make_pair(status, outlen);
     }
 
     virtual Direction get_direction() {
@@ -3931,6 +3932,13 @@ std::unique_ptr<BinaryDataOperator> NBTreeExtentsList::search_binary(aku_Timesta
     concat.reset(new ChainOperator(std::move(iterators)));
     std::unique_ptr<BinaryDataOperator> res(new BinaryDataIterator(std::move(concat)));
     return res;
+}
+
+std::unique_ptr<BinaryDataOperator> NBTreeExtentsList::filter_binary(aku_Timestamp begin, aku_Timestamp end, const std::string& regex) const {
+    auto it = search_binary(begin, end);
+    std::unique_ptr<BinaryDataOperator> op;
+    op.reset(new BinaryDataFilter(std::move(it), regex));
+    return op;
 }
 
 std::unique_ptr<RealValuedOperator> NBTreeExtentsList::filter(aku_Timestamp begin,

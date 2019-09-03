@@ -134,6 +134,7 @@ struct Selection {
     aku_Timestamp                begin;
     aku_Timestamp                  end;
     bool                        events;
+    std::string       event_body_regex;
 
     //! This matcher should be used by Join-statement
     std::shared_ptr<PlainSeriesMatcher> matcher;

@@ -335,6 +335,23 @@ static std::tuple<aku_Status, std::string, ErrorMsg> parse_select_events_stmt(bo
     return std::make_tuple(AKU_EQUERY_PARSING_ERROR, "", "Query object doesn't have a 'select-events' field");
 }
 
+static std::tuple<aku_Status, std::string, ErrorMsg> parse_select_events_filter_field(boost::property_tree::ptree const& ptree) {
+    auto flt = ptree.get_child_optional("filter");
+    if (flt && flt->empty()) {
+        // select query
+        auto str = flt->get_value<std::string>("");
+        if (!str.empty()) {
+            try {
+                std::regex rexp(str.data(), std::regex_constants::ECMAScript);
+            } catch (const std::regex_error& w) {
+                return std::make_tuple(AKU_EBAD_ARG, "", w.what());
+            }
+            return std::make_tuple(AKU_SUCCESS, str, ErrorMsg());
+        }
+    }
+    return std::make_tuple(AKU_SUCCESS, "", "");
+}
+
 /** Parse `join` statement, format:
   * { "join": [ "metric1", "metric2", ... ], ... }
   */
@@ -1347,6 +1364,16 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_event
     std::tie(status, metric, error) = parse_select_events_stmt(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
+    }
+
+    // Filter
+    std::string flt;
+    std::tie(status, flt, error) = parse_select_events_filter_field(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+    if (!flt.empty()) {
+        result.select.event_body_regex = flt;
     }
 
     // Group-by statement

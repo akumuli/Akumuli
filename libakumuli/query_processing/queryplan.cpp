@@ -90,12 +90,24 @@ struct ScanEventsProcessingStep : ProcessingPrelude {
     aku_Timestamp begin_;
     aku_Timestamp end_;
     std::vector<aku_ParamId> ids_;
+    std::string regex_;
 
+    //! C-tor (1), create scan without filter
     template<class T>
     ScanEventsProcessingStep(aku_Timestamp begin, aku_Timestamp end, T&& t)
         : begin_(begin)
         , end_(end)
         , ids_(std::forward<T>(t))
+    {
+    }
+
+    //! C-tor (2), create scan with filter
+    template<class T>
+    ScanEventsProcessingStep(aku_Timestamp begin, aku_Timestamp end, const std::string& exp, T&& t)
+        : begin_(begin)
+        , end_(end)
+        , ids_(std::forward<T>(t))
+        , regex_(exp)
     {
     }
 
@@ -991,9 +1003,18 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> scan_events_query_pla
     }
 
     std::unique_ptr<ProcessingPrelude> t1stage;
-    t1stage.reset(new ScanEventsProcessingStep  (req.select.begin,
-                                                 req.select.end,
-                                                 req.select.columns.at(0).ids));
+    if (req.select.event_body_regex.empty()) {
+        // Regex filter is not set
+        t1stage.reset(new ScanEventsProcessingStep  (req.select.begin,
+                                                     req.select.end,
+                                                     req.select.columns.at(0).ids));
+    }
+    else {
+        t1stage.reset(new ScanEventsProcessingStep  (req.select.begin,
+                                                     req.select.end,
+                                                     req.select.event_body_regex,
+                                                     req.select.columns.at(0).ids));
+    }
 
     std::unique_ptr<MaterializationStep> t2stage;
     if (req.group_by.enabled) {
