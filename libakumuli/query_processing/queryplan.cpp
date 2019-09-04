@@ -112,6 +112,9 @@ struct ScanEventsProcessingStep : ProcessingPrelude {
     }
 
     virtual aku_Status apply(const ColumnStore& cstore) {
+        if (!regex_.empty()) {
+            return cstore.filter_events(ids_, begin_, end_, regex_, &scanlist_);
+        }
         return cstore.scan_events(ids_, begin_, end_, &scanlist_);
     }
 

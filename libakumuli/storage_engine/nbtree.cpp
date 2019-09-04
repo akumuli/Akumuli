@@ -1693,8 +1693,8 @@ public:
             if (len == 1) {
                 if (std::regex_search(xs, regex_)) {
                     outlen++;
-                    *destts = ts;
-                    *destxs = xs;
+                    *destts++ = ts;
+                    *destxs++ = xs;
                     size--;
                 }
             }
