@@ -1,6 +1,17 @@
 Release notes
 =============
 
+Version 0.8.70
+--------------
+
+IMPROVEMENT
+
+* Implement events filtering
+
+BUG FIX
+
+* Fix materializaton step for event
+
 Version 0.8.69
 --------------
 
