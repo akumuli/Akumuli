@@ -134,9 +134,9 @@ std::tuple<aku_Status, size_t> EventChainMaterializer::read(u8 *dest, size_t des
             sample.timestamp = curr_ts_;
             sample.payload.float64 = 0;
             memcpy(dest, &sample, sizeof(sample));
-            dest += sizeof(sample);
-            memcpy(dest, curr_.data(), curr_.size());
-            dest += curr_.size();
+            auto destsample = reinterpret_cast<aku_Sample*>(dest);
+            memcpy(destsample->payload.data, curr_.data(), curr_.size());
+            dest += space_needed;
             dest_size -= space_needed;
             accsz += space_needed;
             available_ = false;

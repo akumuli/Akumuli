@@ -44,6 +44,7 @@ std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree c
 
 MutableSample::MutableSample(const aku_Sample* source)
     : istuple_((source->payload.type & AKU_PAYLOAD_TUPLE) == AKU_PAYLOAD_TUPLE)
+    , orig_(nullptr)
 {
     auto size = std::max(sizeof(aku_Sample), static_cast<size_t>(source->payload.size));
     memcpy(payload_.raw, source, size);

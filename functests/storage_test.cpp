@@ -760,31 +760,6 @@ int main(int argc, const char** argv) {
             storage.close();
         }
 
-        {
-            storage.open();
-            std::vector<DataPoint> exppoints = {
-                { "20150101T000020.000000000", "cpu key=2", 2.0 },
-                { "20150101T000021.000000000", "cpu key=3", 2.1 },
-                { "20150101T000022.000000000", "cpu key=4", 2.2 },
-                { "20150101T000023.000000000", "cpu key=5", 2.3 },
-            };
-            std::vector<DataPoint> newpoints = {
-                { "20150101T000024.000000000", "cpu key=1", 2.4 },
-                { "20150101T000025.000000000", "cpu key=2", 2.5 },
-                { "20150101T000026.000000000", "cpu key=3", 2.6 },
-                { "20150101T000027.000000000", "cpu key=4", 2.7 },
-                { "20150101T000028.000000000", "cpu key=5", 2.8 },
-                { "20150101T000029.000000000", "cpu key=1", 2.8 },
-            };
-            std::vector<std::string> ids = {
-                "cpu key=1",
-                "cpu key=2",
-                "cpu key=3",
-                "cpu key=4",
-                "cpu key=5",
-            };
-        }
-
         std::cout << "OK!" << std::endl;
 
         storage.delete_all();
