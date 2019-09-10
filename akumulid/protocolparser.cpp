@@ -384,7 +384,7 @@ bool RESPProtocolParser::parse_values(RESPStream&        stream,
     int arrsize;
     bool success;
     auto parse_int_value = [&](int at) {
-        std::tie(success, values[0]) = stream.read_int();
+        std::tie(success, values[at]) = stream.read_int();
         if (!success) {
             return false;
         }

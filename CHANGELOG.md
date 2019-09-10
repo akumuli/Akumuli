@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.71
+--------------
+
+BUG FIX
+
+* Fix bulk-transfer encoding
+
 Version 0.8.70
 --------------
 
