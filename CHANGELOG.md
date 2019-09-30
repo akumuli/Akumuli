@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.72
+--------------
+
+BUG FIX
+
+* Fix RPM package dependencies
+
 Version 0.8.71
 --------------
 
