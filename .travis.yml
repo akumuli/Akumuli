@@ -122,13 +122,17 @@ matrix:
       sudo: required
       arch: arm64
       compiler: gcc
+      services:
+      - docker
       env:
       - DISTRIBUTION=ubuntu/bionic
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
+      before_install:
+      - docker pull ubuntu:18.04
       script:
-      - bash ./CI/runci.sh ubuntu-18.04
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:18.04 ./CI/runci.sh ubuntu-18.04
       #if: branch = master
     # Container based 64-bit Debian Stretch build
     - os: linux
