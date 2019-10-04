@@ -21,6 +21,8 @@ matrix:
       script:
       - bash ./CI/runci.sh ubuntu-14.04
       - source ./CI/prepare-docker-image.sh
+      #todo: remove
+      if: branch = master
     # VM-based 64-bit generic build (GCC)
     - os: linux
       dist: trusty
@@ -48,6 +50,8 @@ matrix:
       - GENERIC_BUILD=false
       script:
       - bash ./CI/runci.sh osx
+      #todo: remove
+      if: branch = master
     # VM-based 64-bit WAL check build (GCC)
     - os: linux
       dist: trusty
@@ -61,6 +65,8 @@ matrix:
       #- DEBUG_BUILD=true
       script:
       - bash ./CI/runci.sh ubuntu-14.04-wal
+      #todo: remove
+      if: branch = master
     # Container based 32-bit Xenial build
     - os: linux
       dist: trusty
@@ -76,6 +82,8 @@ matrix:
       - docker pull i386/ubuntu:xenial
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e FORCE_ARCH=i386 -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli i386/ubuntu:xenial ./CI/runci.sh ubuntu-16.04
+      #todo: remove
+      if: branch = master
     # Container based 64-bit Xenial build
     - os: linux
       dist: trusty
@@ -112,8 +120,8 @@ matrix:
     - os: linux
       dist: bionic
       sudo: required
-      arch: 
-      - arm64
+      arch: arm64
+      compiler: gcc
       env:
       - DISTRIBUTION=ubuntu/bionic
       - DEPLOY_PACKAGE=false
@@ -121,7 +129,7 @@ matrix:
       - GENERIC_BUILD=false
       script:
       - bash ./CI/runci.sh ubuntu-18.04
-      if: branch = master
+      #if: branch = master
     # Container based 64-bit Debian Stretch build
     - os: linux
       dist: trusty
