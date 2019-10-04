@@ -75,9 +75,7 @@ matrix:
       before_install:
       - docker pull i386/ubuntu:xenial
       script:
-      - echo "Disabled"
-      # Disabled because build fails due to timeout because of the slow ubuntu mirror
-      #- docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e FORCE_ARCH=i386 -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli i386/ubuntu:xenial ./CI/runci.sh ubuntu-16.04
+      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e FORCE_ARCH=i386 -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli i386/ubuntu:xenial ./CI/runci.sh ubuntu-16.04
     # Container based 64-bit Xenial build
     - os: linux
       dist: trusty
@@ -109,6 +107,20 @@ matrix:
       - docker pull ubuntu:18.04
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:18.04 ./CI/runci.sh ubuntu-18.04
+      if: branch = master
+    # Container based ARM-64 Bionic build
+    - os: linux
+      dist: bionic
+      sudo: required
+      arch: 
+      - arm64
+      env:
+      - DISTRIBUTION=ubuntu/bionic
+      - DEPLOY_PACKAGE=false
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      script:
+      - bash ./CI/runci.sh ubuntu-18.04
       if: branch = master
     # Container based 64-bit Debian Stretch build
     - os: linux

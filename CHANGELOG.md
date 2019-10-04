@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.8.73
+--------------
+
+BUG FIX
+
+* Enable ARM build on CI
+
+
 Version 0.8.72
 --------------
 
