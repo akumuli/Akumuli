@@ -126,7 +126,7 @@ matrix:
       - docker
       env:
       - DISTRIBUTION=ubuntu/bionic
-      - DEPLOY_PACKAGE=false
+      - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       before_install:
