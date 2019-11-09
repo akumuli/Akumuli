@@ -1,6 +1,6 @@
 #include "tcp_server.h"
 #include "utility.h"
-#include "binaryprotocol.h"
+#include "chainrepl_messages.h"
 
 #include <thread>
 #include <atomic>

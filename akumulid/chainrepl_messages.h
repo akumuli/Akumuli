@@ -11,7 +11,7 @@ typedef int32_t  i32;
 
 namespace Akumuli {
 
-/** The messages supported by the binary protocol implementation:
+/** The messages supported by the chain-replication protocol implementation:
  *  - Header
  *  - Data payload
  *  - Set tail

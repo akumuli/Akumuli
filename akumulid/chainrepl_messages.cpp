@@ -1,4 +1,4 @@
-#include "binaryprotocol.h"
+#include "chainrepl_messages.h"
 #include <vector>
 #include <cstring>
 

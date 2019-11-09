@@ -10,7 +10,7 @@
 
 #include "tcp_server.h"
 #include "logger.h"
-#include "binaryprotocol.h"
+#include "chainrepl_messages.h"
 
 using namespace Akumuli;
 
