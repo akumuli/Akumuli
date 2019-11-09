@@ -1,9 +1,13 @@
 #include "tcp_server.h"
 #include "utility.h"
+#include "binaryprotocol.h"
+
 #include <thread>
 #include <atomic>
 #include <boost/function.hpp>
 #include <boost/exception/diagnostic_information.hpp>
+#include <boost/asio/streambuf.hpp>
+#include <boost/asio/basic_streambuf.hpp>
 
 namespace Akumuli {
 
@@ -201,6 +205,262 @@ private:
 typedef TelnetSession<RESPProtocolParser> RESPSession;
 typedef TelnetSession<OpenTSDBProtocolParser> OpenTSDBSession;
 
+
+//                           //
+//     ChainSession          //
+//                           //
+
+/** Server session that inplements part of the chain-replication protocol.
+ *  Must be created in the heap.
+  */
+class ChainSession : public ProtocolSession, public std::enable_shared_from_this<ChainSession> {
+    typedef std::unordered_map<u32, aku_ParamId> ParamIdTable;
+    const bool                      parallel_;
+    IOServiceT*                     io_;
+    SocketT                         socket_;
+    StrandT                         strand_;
+    std::shared_ptr<DbSession>      spout_;
+    boost::asio::streambuf          sendbuf_;
+    boost::asio::streambuf          recvbuf_;
+    std::istream                    rstream_;
+    std::ostream                    sstream_;
+    std::vector<char>               event_out_buf_;
+    ParamIdTable                    param_id_table_;
+    Logger                          logger_;
+
+public:
+    typedef Byte* BufferT;
+
+    ChainSession(IOServiceT *io, std::shared_ptr<DbSession> spout, bool parallel)
+        : parallel_(parallel)
+        , io_(io)
+        , socket_(*io)
+        , strand_(*io)
+        , spout_(spout)
+        , rstream_(&recvbuf_)
+        , sstream_(&sendbuf_)
+        , logger_(make_unique_session_name())
+    {
+        logger_.info() << "Chain session created";
+    }
+
+    ~ChainSession() {
+        logger_.info() << "Chain session destroyed";
+    }
+
+    virtual SocketT& socket() {
+        return socket_;
+    }
+
+    virtual void start() {
+        start_first();
+    }
+
+    virtual ErrorCallback get_error_cb() {
+        logger_.info() << "Creating error handler for chain session";
+        auto self = this->shared_from_this();
+        auto weak = std::weak_ptr<ChainSession>(self);
+        auto fn = [weak](aku_Status status, u64) {
+            auto session = weak.lock();
+            if (session) {
+                const char* msg = aku_error_message(status);
+                session->logger_.trace() << msg;
+                Reply err;
+                err.seq = 0;  // TODO: set correct seq
+                err.status = status;
+                err.error_message = msg;
+                session->reply(err);
+            }
+        };
+        return ErrorCallback(fn);
+    }
+
+private:
+
+    void start_first() {
+        auto buf = recvbuf_.prepare(sizeof(Header));
+        socket_.async_receive(
+                buf,
+                strand_.wrap(
+                    boost::bind(&ChainSession::handle_first,
+                                this->shared_from_this(),
+                                boost::asio::placeholders::error,
+                                boost::asio::placeholders::bytes_transferred)));
+    }
+
+    void start_next(Header const& hdr) {
+        auto buf = recvbuf_.prepare(hdr.size);
+        socket_.async_receive(
+                buf,
+                strand_.wrap(
+                    boost::bind(&ChainSession::handle_next,
+                                shared_from_this(),
+                                hdr,
+                                boost::asio::placeholders::error,
+                                boost::asio::placeholders::bytes_transferred)));
+    }
+
+    void reply(const Reply& ret) {
+        // Write back only error messages for now
+        sstream_ << ret;
+        boost::asio::async_write(socket_,
+                                 sendbuf_,
+                                 boost::bind(&ChainSession::handle_write_error,
+                                             shared_from_this(),
+                                             boost::asio::placeholders::error));
+    }
+
+    void handle_first(boost::system::error_code error,
+                      size_t nbytes)
+    {
+        if (error) {
+            logger_.error() << error.message();
+        } else {
+            try {
+                recvbuf_.commit(nbytes);
+                Header hdr;
+                rstream_ >> hdr;
+                start_next(hdr);
+            } catch (...) {
+                // Unexpected error
+                Reply err = {
+                    0,
+                    AKU_EIO,
+                    boost::current_exception_diagnostic_information(),
+                };
+                reply(err);
+                logger_.error() << boost::current_exception_diagnostic_information();
+            }
+        }
+    }
+
+    void handle_next(const Header& header,
+                     boost::system::error_code error,
+                     size_t nbytes)
+    {
+        if (error) {
+            logger_.error() << error.message();
+        } else {
+            try {
+                recvbuf_.commit(nbytes);
+                switch(header.type) {
+                case MessageType::FLOAT: {
+                    DataPayload payload;
+                    rstream_ >> payload;
+                    // Process message
+                    process_datapoint(payload);
+                    // Forward message
+                    // TBD
+                }   break;
+                case MessageType::EVENT: {
+                    EventPayload payload;
+                    rstream_ >> payload;
+                    // Process message
+                    process_event(payload);
+                    // Forward message
+                    // TBD
+                }   break;
+                case MessageType::DICT: {
+                    DictionaryUpdate upd;
+                    rstream_ >> upd;
+                    // Process message
+                    update_dictionary(upd);
+                    // Forward message
+                    // TBD
+                }   break;
+                case MessageType::TAIL: {
+                    // Change forwarding destination
+                    // TBD
+                }   break;
+                };
+                start_first();
+            } catch (DatabaseError const& dberr) {
+                // Database error
+                logger_.error() << dberr.what();
+                logger_.error() << boost::current_exception_diagnostic_information();
+                Reply err = {
+                    0,
+                    dberr.status,
+                    dberr.what(),
+                };
+                reply(err);
+            } catch (...) {
+                // Unexpected error
+                logger_.error() << boost::current_exception_diagnostic_information();
+                Reply err = {
+                    0,
+                    AKU_EIO,
+                    boost::current_exception_diagnostic_information(),
+                };
+                reply(err);
+            }
+        }
+    }
+
+
+    void handle_write_error(boost::system::error_code error) {
+        if (!error) {
+            logger_.info() << "Clean shutdown";
+            boost::system::error_code shutdownerr;
+            socket_.shutdown(SocketT::shutdown_both, shutdownerr);
+            if (shutdownerr) {
+                logger_.error() << "Shutdown error: " << shutdownerr.message();
+            }
+        } else {
+            logger_.error() << "Error sending error message to client";
+            logger_.error() << error.message();
+        }
+    }
+
+    void update_dictionary(DictionaryUpdate const& payload) {
+        aku_Sample sample;
+        aku_Status status = spout_->series_to_param_id(payload.sname.data(), payload.sname.size(), &sample);
+        if (status != AKU_SUCCESS) {
+            Reply ret = {
+                0,
+                status,
+                "Dcitionary update failed"
+            };
+            reply(ret);
+        }
+        else {
+            param_id_table_[payload.id] = sample.paramid;
+        }
+    }
+
+    void process_datapoint(DataPayload const& payload) {
+        aku_Sample sample;
+        sample.paramid = param_id_table_[payload.id];  // if payload.id is invalid paramid will be set to 0
+                                                       // and subsequent database write call will fail triggering
+                                                       // DatabaseError handling logic.
+        sample.timestamp = payload.timestamp;
+        sample.payload.type = AKU_PAYLOAD_FLOAT;
+        sample.payload.float64 = payload.value;
+        auto status = spout_->write(sample);
+        if (status != AKU_SUCCESS) {
+            DatabaseError dberr(status);
+            BOOST_THROW_EXCEPTION(dberr);
+        }
+    }
+
+    void process_event(EventPayload const& evt) {
+        aku_Sample sample;
+        auto len            = evt.value.length() + sizeof(aku_Sample);
+        sample.payload.type = AKU_PAYLOAD_EVENT;
+        sample.payload.size = static_cast<u16>(len);   // len is guaranteed to fit
+        sample.timestamp    = evt.timestamp;
+        sample.paramid      = param_id_table_[evt.id]; // Note: process_datapoint
+        event_out_buf_.resize(len);
+        auto pevt = reinterpret_cast<aku_Sample*>(event_out_buf_.data());
+        memcpy(pevt, &sample, sizeof(sample));
+        memcpy(pevt->payload.data, evt.value.data(), evt.value.size());
+        auto status = spout_->write(*pevt);
+        if (status != AKU_SUCCESS) {
+            BOOST_THROW_EXCEPTION(DatabaseError(status));
+        }
+    }
+};
+
 //                           //
 //     Protocol builders     //
 //                           //
@@ -244,6 +504,26 @@ struct OpenTSDBSessionBuilder : ProtocolSessionBuilder {
     }
 };
 
+
+struct ChainReplicationSessionBuilder : ProtocolSessionBuilder {
+    bool parallel_;
+
+    ChainReplicationSessionBuilder(bool parallel=true)
+        : parallel_(parallel)
+    {
+    }
+
+    virtual std::shared_ptr<ProtocolSession> create(IOServiceT *io, std::shared_ptr<DbSession> session) {
+        std::shared_ptr<ProtocolSession> result;
+        result.reset(new ChainSession(io, session, parallel_));
+        return result;
+    }
+
+    virtual std::string name() const {
+        return "ChainReplication";
+    }
+};
+
 std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilder::create_resp_builder(bool parallel) {
     std::unique_ptr<ProtocolSessionBuilder> res;
     res.reset(new RESPSessionBuilder(parallel));
@@ -253,6 +533,12 @@ std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilder::create_resp_buil
 std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilder::create_opentsdb_builder(bool parallel) {
     std::unique_ptr<ProtocolSessionBuilder> res;
     res.reset(new OpenTSDBSessionBuilder(parallel));
+    return res;
+}
+
+std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilder::create_chain_builder(bool parallel) {
+    std::unique_ptr<ProtocolSessionBuilder> res;
+    res.reset(new ChainReplicationSessionBuilder(parallel));
     return res;
 }
 
@@ -573,6 +859,8 @@ struct TcpServerBuilder {
                 inst = ProtocolSessionBuilder::create_resp_builder(true);
             } else if (protocol.name == "OpenTSDB") {
                 inst = ProtocolSessionBuilder::create_opentsdb_builder(true);
+            } else if (protocol.name == "ChainReplication") {
+                inst = ProtocolSessionBuilder::create_chain_builder(true);
             } else {
                 s_logger_.error() << "Unknown protocol " << protocol.name;
             }

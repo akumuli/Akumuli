@@ -70,6 +70,7 @@ add_executable(
     ../akumulid/stream.cpp
     ../akumulid/protocolparser.cpp
     ../akumulid/logger.cpp
+    ../akumulid/binaryprotocol.cpp
 )
 target_link_libraries(test_tcp_server
     akumuli

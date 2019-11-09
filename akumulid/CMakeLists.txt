@@ -11,6 +11,7 @@ add_executable(akumulid
     httpserver.cpp
     query_results_pooler.cpp
     signal_handler.cpp
+    binaryprotocol.cpp
 )
 
 target_link_libraries(akumulid

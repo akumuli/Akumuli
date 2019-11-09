@@ -10,12 +10,13 @@
 
 #include "tcp_server.h"
 #include "logger.h"
+#include "binaryprotocol.h"
 
 using namespace Akumuli;
 
 
 static Logger logger_ = Logger("tcp-server-test");
-typedef std::tuple<aku_ParamId, aku_Timestamp, double> ValueT;
+typedef std::tuple<aku_ParamId, aku_Timestamp, double, std::string> ValueT;
 
 
 struct SessionMock : DbSession {
@@ -25,8 +26,15 @@ struct SessionMock : DbSession {
         : results(results) {}
 
     virtual aku_Status write(const aku_Sample &sample) override {
-        logger_.trace() << "write_double(" << sample.paramid << ", " << sample.timestamp << ", " << sample.payload.float64 << ")";
-        results.push_back(std::make_tuple(sample.paramid, sample.timestamp, sample.payload.float64));
+        if (sample.payload.type == AKU_PAYLOAD_FLOAT) {
+            logger_.trace() << "write_double(" << sample.paramid << ", " << sample.timestamp << ", " << sample.payload.float64 << ")";
+            results.push_back(std::make_tuple(sample.paramid, sample.timestamp, sample.payload.float64, ""));
+        }
+        else if (sample.payload.type == AKU_PAYLOAD_EVENT) {
+            logger_.trace() << "write_float(" << sample.paramid << ", " << sample.timestamp << ")";
+            std::string value(sample.payload.data, sample.payload.size - sizeof(aku_Sample));
+            results.push_back(std::make_tuple(sample.paramid, sample.timestamp, 0, value));
+        }
         return AKU_SUCCESS;
     }
 
@@ -161,6 +169,18 @@ struct TCPServerTestSuite {
         serv->_start();
     }
 
+    TCPServerTestSuite(std::unique_ptr<ProtocolSessionBuilder> protocol) {
+        // Create mock pipeline
+        dbcon = std::make_shared<Mock>();
+
+        // Run server
+        std::vector<IOServiceT*> iovec = { &io };
+        serv = std::make_shared<TcpAcceptor>(iovec, PORT, std::move(protocol), dbcon);
+
+        // Start reading but don't start iorun thread
+        serv->_start();
+    }
+
     ~TCPServerTestSuite() {
         logger_.info() << "Clean up suite resources";
         if (serv) {
@@ -205,7 +225,8 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_1) {
         aku_ParamId id;
         aku_Timestamp ts;
         double value;
-        std::tie(id, ts, value) = suite.dbcon->results.at(0);
+        std::string event;
+        std::tie(id, ts, value, event) = suite.dbcon->results.at(0);
         BOOST_REQUIRE_EQUAL(id, 1);
         BOOST_REQUIRE_EQUAL(ts, 2);
         BOOST_REQUIRE_CLOSE_FRACTION(value, 3.14, 0.00001);
@@ -237,7 +258,8 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_2) {
         aku_ParamId id;
         aku_Timestamp ts;
         double value;
-        std::tie(id, ts, value) = suite.dbcon->results.at(0);
+        std::string event;
+        std::tie(id, ts, value, event) = suite.dbcon->results.at(0);
         BOOST_REQUIRE_EQUAL(id, 1);
         BOOST_REQUIRE_EQUAL(ts, 2);
         BOOST_REQUIRE_CLOSE_FRACTION(value, 3.14, 0.00001);
@@ -273,15 +295,16 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_loopback_3) {
         aku_ParamId id;
         aku_Timestamp ts;
         double value;
+        std::string event;
 
         // First message
-        std::tie(id, ts, value) = suite.dbcon->results.at(0);
+        std::tie(id, ts, value, event) = suite.dbcon->results.at(0);
         BOOST_REQUIRE_EQUAL(id, 1);
         BOOST_REQUIRE_EQUAL(ts, 2);
         BOOST_REQUIRE_CLOSE_FRACTION(value, 3.14, 0.00001);
 
         // Second message
-        std::tie(id, ts, value) = suite.dbcon->results.at(1);
+        std::tie(id, ts, value, event) = suite.dbcon->results.at(1);
         BOOST_REQUIRE_EQUAL(id, 3);
         BOOST_REQUIRE_EQUAL(ts, 4);
         BOOST_REQUIRE_CLOSE_FRACTION(value, 1.61, 0.00001);
@@ -360,3 +383,176 @@ BOOST_AUTO_TEST_CASE(Test_tcp_server_backend_error_handling) {
     });
 }
 
+
+BOOST_AUTO_TEST_CASE(Test_chain_replication_server_loopback_1) {
+
+    auto protocol = ProtocolSessionBuilder::create_chain_builder();
+    TCPServerTestSuite<ConnectionMock> suite(std::move(protocol));
+
+    suite.run([&](SocketT& socket) {
+        boost::asio::streambuf stream;
+        std::ostream os(&stream);
+        DictionaryUpdate dict = {
+            1,
+            "+1",
+        };
+        Header hdr1 = {
+            0,
+            MessageType::DICT,
+            dict.wireLength(),
+        };
+        DataPayload data = {
+            1,
+            2,
+            3.14,
+        };
+        Header hdr2 = {
+            0,
+            MessageType::FLOAT,
+            data.wireLength(),
+        };
+        os << hdr1 << dict << hdr2 << data;
+
+        boost::asio::write(socket, stream);
+
+        // TCPSession.handle_first
+        suite.io.run_one();
+        // TCPSession.handle_next
+        suite.io.run_one();
+        // TCPSession.handle_first
+        suite.io.run_one();
+        // TCPSession.handle_next
+        suite.io.run_one();
+
+        // Check
+        if (suite.dbcon->results.size() != 1) {
+            logger_.error() << "Error detected";
+            BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 1);
+        }
+        aku_ParamId id;
+        aku_Timestamp ts;
+        double value;
+        std::string event;
+        std::tie(id, ts, value, event) = suite.dbcon->results.at(0);
+        BOOST_REQUIRE_EQUAL(id, 1);
+        BOOST_REQUIRE_EQUAL(ts, 2);
+        BOOST_REQUIRE_CLOSE_FRACTION(value, 3.14, 0.00001);
+    });
+}
+
+BOOST_AUTO_TEST_CASE(Test_chain_replication_server_loopback_2) {
+
+    auto protocol = ProtocolSessionBuilder::create_chain_builder();
+    TCPServerTestSuite<ConnectionMock> suite(std::move(protocol));
+
+    suite.run([&](SocketT& socket) {
+        boost::asio::streambuf stream;
+        std::ostream os(&stream);
+        DictionaryUpdate dict = {
+            1,
+            "+1",
+        };
+        Header hdr1 = {
+            0,
+            MessageType::DICT,
+            dict.wireLength(),
+        };
+        DataPayload data = {
+            1,
+            2,
+            3.14,
+        };
+        Header hdr2 = {
+            0,
+            MessageType::FLOAT,
+            data.wireLength(),
+        };
+
+        os << hdr1 << dict;
+        int n = boost::asio::write(socket, stream);
+
+        // TCPSession.handle_first
+        suite.io.run_one();
+        // TCPSession.handle_next
+        suite.io.run_one();
+
+        stream.consume(n);
+        os << hdr2 << data;
+        boost::asio::write(socket, stream);
+
+        // TCPSession.handle_first
+        suite.io.run_one();
+        // TCPSession.handle_next
+        suite.io.run_one();
+
+        // Check
+        if (suite.dbcon->results.size() != 1) {
+            logger_.error() << "Error detected";
+            BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 1);
+        }
+        aku_ParamId id;
+        aku_Timestamp ts;
+        double value;
+        std::string event;
+        std::tie(id, ts, value, event) = suite.dbcon->results.at(0);
+        BOOST_REQUIRE_EQUAL(id, 1);
+        BOOST_REQUIRE_EQUAL(ts, 2);
+        BOOST_REQUIRE_CLOSE_FRACTION(value, 3.14, 0.00001);
+    });
+}
+
+BOOST_AUTO_TEST_CASE(Test_chain_replication_server_loopback_3) {
+
+    auto protocol = ProtocolSessionBuilder::create_chain_builder();
+    TCPServerTestSuite<ConnectionMock> suite(std::move(protocol));
+
+    suite.run([&](SocketT& socket) {
+        boost::asio::streambuf stream;
+        std::ostream os(&stream);
+        DictionaryUpdate dict = {
+            1,
+            "+1",
+        };
+        Header hdr1 = {
+            0,
+            MessageType::DICT,
+            dict.wireLength(),
+        };
+        EventPayload data = {
+            1,
+            2,
+            "test-event",
+        };
+        Header hdr2 = {
+            0,
+            MessageType::EVENT,
+            data.wireLength(),
+        };
+        os << hdr1 << dict << hdr2 << data;
+
+        boost::asio::write(socket, stream);
+
+        // TCPSession.handle_first
+        suite.io.run_one();
+        // TCPSession.handle_next
+        suite.io.run_one();
+        // TCPSession.handle_first
+        suite.io.run_one();
+        // TCPSession.handle_next
+        suite.io.run_one();
+
+        // Check
+        if (suite.dbcon->results.size() != 1) {
+            logger_.error() << "Error detected";
+            BOOST_REQUIRE_EQUAL(suite.dbcon->results.size(), 1);
+        }
+        aku_ParamId id;
+        aku_Timestamp ts;
+        double value;
+        std::string event;
+        std::tie(id, ts, value, event) = suite.dbcon->results.at(0);
+        BOOST_REQUIRE_EQUAL(id, 1);
+        BOOST_REQUIRE_EQUAL(ts, 2);
+        BOOST_REQUIRE_EQUAL(event, "test-event");
+    });
+}

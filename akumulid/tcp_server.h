@@ -99,6 +99,14 @@ struct ProtocolSessionBuilder {
      * @return newly created object
      */
     static std::unique_ptr<ProtocolSessionBuilder> create_opentsdb_builder(bool parallel=true);
+
+
+    /**
+     * @brief Create Chain-Replication binary protocol builder
+     * @param parallel use thread safe implementation if true
+     * @return newly created object
+     */
+    static std::unique_ptr<ProtocolSessionBuilder> create_chain_builder(bool parallel=true);
 };
 
 
