@@ -152,28 +152,52 @@ static int accept_connection(void           *cls,
 }
 }
 
-HttpServer::HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder> qproc, AccessControlList const& acl)
+HttpServer::HttpServer(boost::asio::ip::tcp::endpoint const& endpoint, std::shared_ptr<ReadOperationBuilder> qproc, AccessControlList const& acl)
     : acl_(acl)
     , proc_(qproc)
-    , port_(port)
+    , endpoint_(endpoint)
     , daemon_(nullptr)  // `start` should be called to initialize daemon_ correctly
 {
 }
 
-HttpServer::HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder> qproc)
-    : HttpServer(port, qproc, AccessControlList())
+HttpServer::HttpServer(boost::asio::ip::tcp::endpoint const& endpoint, std::shared_ptr<ReadOperationBuilder> qproc)
+    : HttpServer(endpoint, qproc, AccessControlList())
 {
 }
 
 void HttpServer::start(SignalHandler* sig, int id) {
     logger.info() << "Start MHD daemon";
-    daemon_ = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,
-                               port_,
-                               NULL,
-                               NULL,
-                               &MHD::accept_connection,
-                               proc_.get(),
-                               MHD_OPTION_END);
+    if (endpoint_.address().is_unspecified()) {
+        daemon_ = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,
+                                   endpoint_.port(),
+                                   NULL,
+                                   NULL,
+                                   &MHD::accept_connection,
+                                   proc_.get(),
+                                   MHD_OPTION_END);
+    }
+    else {
+        struct sockaddr_in in_addr;
+        memset(&in_addr, 0, sizeof(in_addr));
+        in_addr.sin_family = AF_INET;
+        in_addr.sin_port = htons(endpoint_.port());
+        if (endpoint_.address().is_loopback()) {
+            in_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        }
+        else {
+            auto bindaddr = endpoint_.address().to_string();
+            inet_pton(AF_INET, bindaddr.c_str(), &(in_addr.sin_addr));
+        }
+        daemon_ = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,
+                                   endpoint_.port(),
+                                   NULL,
+                                   NULL,
+                                   &MHD::accept_connection,
+                                   proc_.get(),
+                                   MHD_OPTION_SOCK_ADDR,
+                                   reinterpret_cast<struct sockaddr*>(&in_addr),
+                                   MHD_OPTION_END);
+    }
     if (daemon_ == nullptr) {
         BOOST_THROW_EXCEPTION(std::runtime_error("can't start daemon"));
     }
@@ -202,7 +226,7 @@ struct HttpServerBuilder {
             s_logger_.error() << "Can't initialize HTTP server, more than one protocol specified";
             BOOST_THROW_EXCEPTION(std::runtime_error("invalid http-server settings"));
         }
-        return std::make_shared<HttpServer>(settings.protocols.front().port, qproc);
+        return std::make_shared<HttpServer>(settings.protocols.front().endpoint, qproc);
     }
 };
 
