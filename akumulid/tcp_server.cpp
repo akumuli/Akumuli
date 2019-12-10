@@ -473,7 +473,7 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection,
     for (auto& kv: protocol_map) {
         EndpointT endpoint = kv.first;
         auto protocol = std::move(kv.second);
-        logger_.info() << "Create acceptor for " << protocol->name() << ", port: " << port;
+        logger_.info() << "Create acceptor for " << protocol->name() << ", endpoint: " << endpoint;
         if (con) {
             auto serv = std::make_shared<TcpAcceptor>(iovec, endpoint, std::move(protocol), con, parallel);
             serv->start();
@@ -567,7 +567,7 @@ struct TcpServerBuilder {
         if (nworkers >= AKU_MAX_THREADS) {
             nworkers = AKU_MAX_THREADS - 4;
         }
-        std::map<int, std::unique_ptr<ProtocolSessionBuilder>> protocol_map;
+        std::map<EndpointT, std::unique_ptr<ProtocolSessionBuilder>> protocol_map;
         for (const auto& protocol: settings.protocols) {
             std::unique_ptr<ProtocolSessionBuilder> inst;
             if (protocol.name == "RESP") {

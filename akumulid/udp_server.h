@@ -37,7 +37,7 @@ class UdpServer : public std::enable_shared_from_this<UdpServer>, public Server 
     boost::barrier                     start_barrier_;  //< Barrier to start worker thread
     boost::barrier                     stop_barrier_;   //< Barrier to stop worker thread
     std::atomic<int>                   stop_;
-    const int                          port_;
+    boost::asio::ip::tcp::endpoint     endpoint_;
     const int                          nworkers_;
     int                                sockfd_;         //< UDP socket file descriptor
 
@@ -83,7 +83,7 @@ public:
       * @param port port number
       * @param pipeline pointer to ingestion pipeline
       */
-    UdpServer(std::shared_ptr<DbConnection> pipeline, int nworkers, int port);
+    UdpServer(std::shared_ptr<DbConnection> pipeline, int nworkers, const boost::asio::ip::tcp::endpoint &endpoint);
 
     //! Start processing packets
     virtual void start(SignalHandler* sig, int id);
