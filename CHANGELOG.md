@@ -1,6 +1,17 @@
 Release notes
 =============
 
+Version 0.8.73
+--------------
+
+BUG FIX
+
+* Fix #328 group-by query crash
+
+IMPROVEMENT
+
+* Bind HTTP/TCP/UDP server to specific iface
+
 Version 0.8.72
 --------------
 
