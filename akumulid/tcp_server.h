@@ -36,7 +36,7 @@ typedef boost::asio::io_service              IOServiceT;
 typedef boost::asio::ip::tcp::acceptor       AcceptorT;
 typedef boost::asio::ip::tcp::socket         SocketT;
 typedef boost::asio::ip::tcp::endpoint       EndpointT;
-typedef boost::asio::io_service::strand                  StrandT;
+typedef boost::asio::io_service::strand      StrandT;
 typedef boost::asio::io_service::work        WorkT;
 typedef std::function<void(aku_Status, u64)> ErrorCallback;
 
@@ -129,10 +129,10 @@ public:
       * @param port port to listen for new connections
       * @param connection to the database
       */
-    TcpAcceptor(
-        std::vector<IOServiceT*> io, int port,
-        std::shared_ptr<DbConnection> connection,
-        bool parallel=true);
+    TcpAcceptor(std::vector<IOServiceT*> io,
+                EndpointT endpoint,
+                std::shared_ptr<DbConnection> connection,
+                bool parallel=true);
 
     /**
      * Create multiprotocol c-tor
@@ -141,12 +141,11 @@ public:
       * @param protocol is a protocol builder
       * @param connection to the database
      */
-    TcpAcceptor(
-        std::vector<IOServiceT*> io,
-        int port,
-        std::unique_ptr<ProtocolSessionBuilder> protocol,
-        std::shared_ptr<DbConnection> connection,
-        bool parallel=true);
+    TcpAcceptor(std::vector<IOServiceT*> io,
+                EndpointT endpoint,
+                std::unique_ptr<ProtocolSessionBuilder> protocol,
+                std::shared_ptr<DbConnection> connection,
+                bool parallel=true);
 
     ~TcpAcceptor();
 
@@ -195,11 +194,11 @@ struct TcpServer : std::enable_shared_from_this<TcpServer>, Server {
      * @param mode is a server mode (event loop per thread or one shared event loop)
      * @note I've found that on Linux Mode::EVENT_LOOP_PER_THREAD gives more consistent results (the other option should be used for windows)
      */
-    TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port, Mode mode=Mode::EVENT_LOOP_PER_THREAD);
+    TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, EndpointT ep, Mode mode=Mode::EVENT_LOOP_PER_THREAD);
 
     TcpServer(std::shared_ptr<DbConnection> connection,
               int concurrency,
-              std::map<int, std::unique_ptr<ProtocolSessionBuilder>> protocol_map,
+              std::map<EndpointT, std::unique_ptr<ProtocolSessionBuilder> > protocol_map,
               Mode mode=Mode::EVENT_LOOP_PER_THREAD);
 
     ~TcpServer();

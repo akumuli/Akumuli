@@ -728,6 +728,35 @@ struct EmptyIterator : RealValuedOperator {
     }
 };
 
+struct EmptyAggregator : AggregateOperator {
+
+    //! Starting timestamp
+    aku_Timestamp              begin_;
+    //! Final timestamp
+    aku_Timestamp              end_;
+
+    EmptyAggregator(aku_Timestamp begin, aku_Timestamp end)
+        : begin_(begin)
+        , end_(end)
+    {
+    }
+
+    size_t get_size() const {
+        return 0;
+    }
+
+    virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
+        return std::make_tuple(AKU_ENO_DATA, 0);
+    }
+
+    virtual Direction get_direction() {
+        if (begin_ < end_) {
+            return Direction::FORWARD;
+        }
+        return Direction::BACKWARD;
+    }
+};
+
 // //////////////////////// //
 // class NBTreeSBlockFilter //
 // //////////////////////// //
@@ -3892,13 +3921,18 @@ std::unique_ptr<RealValuedOperator> NBTreeExtentsList::search(aku_Timestamp begi
     }
     SharedLock lock(lock_);
     std::vector<std::unique_ptr<RealValuedOperator>> iterators;
-    if (begin < end) {
-        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back((*it)->search(begin, end));
-        }
-    } else {
-        for (auto const& root: extents_) {
-            iterators.push_back(root->search(begin, end));
+    if (extents_.empty()) {
+        iterators.emplace_back(new EmptyIterator(begin, end));
+    }
+    else {
+        if (begin < end) {
+            for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+                iterators.push_back((*it)->search(begin, end));
+            }
+        } else {
+            for (auto const& root: extents_) {
+                iterators.push_back(root->search(begin, end));
+            }
         }
     }
     if (iterators.size() == 1) {
@@ -3915,13 +3949,18 @@ std::unique_ptr<BinaryDataOperator> NBTreeExtentsList::search_binary(aku_Timesta
     }
     SharedLock lock(lock_);
     std::vector<std::unique_ptr<RealValuedOperator>> iterators;
-    if (begin < end) {
-        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back((*it)->search(begin, end));
-        }
-    } else {
-        for (auto const& root: extents_) {
-            iterators.push_back(root->search(begin, end));
+    if (extents_.empty()) {
+        iterators.emplace_back(new EmptyIterator(begin, end));
+    }
+    else {
+        if (begin < end) {
+            for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+                iterators.push_back((*it)->search(begin, end));
+            }
+        } else {
+            for (auto const& root: extents_) {
+                iterators.push_back(root->search(begin, end));
+            }
         }
     }
     if (iterators.size() == 1) {
@@ -3950,13 +3989,18 @@ std::unique_ptr<RealValuedOperator> NBTreeExtentsList::filter(aku_Timestamp begi
     }
     SharedLock lock(lock_);
     std::vector<std::unique_ptr<RealValuedOperator>> iterators;
-    if (begin < end) {
-        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back((*it)->filter(begin, end, filter));
-        }
-    } else {
-        for (auto const& root: extents_) {
-            iterators.push_back(root->filter(begin, end, filter));
+    if (extents_.empty()) {
+        iterators.emplace_back(new EmptyIterator(begin, end));
+    }
+    else {
+        if (begin < end) {
+            for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+                iterators.push_back((*it)->filter(begin, end, filter));
+            }
+        } else {
+            for (auto const& root: extents_) {
+                iterators.push_back(root->filter(begin, end, filter));
+            }
         }
     }
     if (iterators.size() == 1) {
@@ -3973,13 +4017,18 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::aggregate(aku_Timestamp be
     }
     SharedLock lock(lock_);
     std::vector<std::unique_ptr<AggregateOperator>> iterators;
-    if (begin < end) {
-        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back((*it)->aggregate(begin, end));
-        }
-    } else {
-        for (auto const& root: extents_) {
-            iterators.push_back(root->aggregate(begin, end));
+    if (extents_.empty()) {
+        iterators.emplace_back(new EmptyAggregator(begin, end));
+    }
+    else {
+        if (begin < end) {
+            for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+                iterators.push_back((*it)->aggregate(begin, end));
+            }
+        } else {
+            for (auto const& root: extents_) {
+                iterators.push_back(root->aggregate(begin, end));
+            }
         }
     }
     if (iterators.size() == 1) {
@@ -3997,13 +4046,18 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::group_aggregate(aku_Timest
     }
     SharedLock lock(lock_);
     std::vector<std::unique_ptr<AggregateOperator>> iterators;
-    if (begin < end) {
-        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back((*it)->group_aggregate(begin, end, step));
-        }
-    } else {
-        for (auto const& root: extents_) {
-            iterators.push_back(root->group_aggregate(begin, end, step));
+    if (extents_.empty()) {
+        iterators.emplace_back(new EmptyAggregator(begin, end));
+    }
+    else {
+        if (begin < end) {
+            for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+                iterators.push_back((*it)->group_aggregate(begin, end, step));
+            }
+        } else {
+            for (auto const& root: extents_) {
+                iterators.push_back(root->group_aggregate(begin, end, step));
+            }
         }
     }
     std::unique_ptr<AggregateOperator> concat;
@@ -4028,13 +4082,18 @@ std::unique_ptr<AggregateOperator> NBTreeExtentsList::candlesticks(aku_Timestamp
     }
     SharedLock lock(lock_);
     std::vector<std::unique_ptr<AggregateOperator>> iterators;
-    if (begin < end) {
-        for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
-            iterators.push_back((*it)->candlesticks(begin, end, hint));
-        }
-    } else {
-        for (auto const& root: extents_) {
-            iterators.push_back(root->candlesticks(begin, end, hint));
+    if (extents_.empty()) {
+        iterators.emplace_back(new EmptyAggregator(begin, end));
+    }
+    else {
+        if (begin < end) {
+            for (auto it = extents_.rbegin(); it != extents_.rend(); it++) {
+                iterators.push_back((*it)->candlesticks(begin, end, hint));
+            }
+        } else {
+            for (auto const& root: extents_) {
+                iterators.push_back(root->candlesticks(begin, end, hint));
+            }
         }
     }
     if (iterators.size() == 1) {
