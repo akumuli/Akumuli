@@ -163,7 +163,8 @@ struct TCPServerTestSuite {
 
         // Run server
         std::vector<IOServiceT*> iovec = { &io };
-        serv = std::make_shared<TcpAcceptor>(iovec, PORT, dbcon);
+        EndpointT ep(boost::asio::ip::tcp::v4(), PORT);
+        serv = std::make_shared<TcpAcceptor>(iovec, ep, dbcon);
 
         // Start reading but don't start iorun thread
         serv->_start();

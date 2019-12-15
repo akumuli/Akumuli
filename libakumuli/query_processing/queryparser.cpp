@@ -1333,6 +1333,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
         result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->get_series_matcher());
+        if (result.group_by.transient_map.empty()) {
+            return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
+        }
     }
 
     std::tie(status, result.select.filters, result.select.filter_rule, error) = parse_filter(ptree, {metric});
@@ -1421,6 +1424,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_event
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
         result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->get_series_matcher());
+        if (result.group_by.transient_map.empty()) {
+            return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
+        }
     }
 
     if (status != AKU_SUCCESS) {
@@ -1562,6 +1568,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
     if (groupbytag) {
         result.group_by.transient_map = groupbytag->get_mapping();
         result.select.matcher = std::shared_ptr<PlainSeriesMatcher>(groupbytag, &groupbytag->local_matcher_);
+        if (result.group_by.transient_map.empty()) {
+            return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
+        }
     }
 
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
@@ -1741,6 +1750,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
             return std::make_tuple(status, result, error);
         }
         result.group_by.transient_map = groupbytag->get_mapping();
+        if (result.group_by.transient_map.empty()) {
+            return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
+        }
     }
     else {
         std::tie(status, error) = init_matcher_in_group_aggregate(&result, matcher, gagg.func);

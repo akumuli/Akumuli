@@ -3,6 +3,8 @@
 #include "storage_api.h"
 #include "signal_handler.h"
 
+#include <boost/asio.hpp>
+
 #include <map>
 #include <string>
 #include <tuple>
@@ -11,8 +13,8 @@
 namespace Akumuli {
 
 struct ProtocolSettings {
-    std::string name;
-    int         port;
+    std::string                    name;
+    boost::asio::ip::tcp::endpoint endpoint;
 };
 
 struct ServerSettings {

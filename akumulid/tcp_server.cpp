@@ -547,11 +547,12 @@ std::unique_ptr<ProtocolSessionBuilder> ProtocolSessionBuilder::create_chain_bui
 //                      //
 
 TcpAcceptor::TcpAcceptor(// Server parameters
-                        std::vector<IOServiceT *> io, int port,
+                        std::vector<IOServiceT *> io, EndpointT endpoint,
                         // Storage & pipeline
-                        std::shared_ptr<DbConnection> connection , bool parallel)
+                        std::shared_ptr<DbConnection> connection ,
+                        bool parallel)
     //: parallel_(parallel)
-    : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
+    : acceptor_(own_io_, endpoint)
     , protocol_(ProtocolSessionBuilder::create_resp_builder(true))
     , sessions_io_(io)
     , connection_(connection)
@@ -562,7 +563,7 @@ TcpAcceptor::TcpAcceptor(// Server parameters
     , iothread_started_(false)
 {
     logger_.info() << "Server created!";
-    logger_.info() << "Port: " << port;
+    logger_.info() << "Endpoint: " << endpoint;
 
     // Blocking I/O services
     for (auto io: sessions_io_) {
@@ -572,12 +573,12 @@ TcpAcceptor::TcpAcceptor(// Server parameters
 
 TcpAcceptor::TcpAcceptor(
         std::vector<IOServiceT*> io,
-        int port,
+        EndpointT endpoint,
         std::unique_ptr<ProtocolSessionBuilder> protocol,
         std::shared_ptr<DbConnection> connection,
         bool parallel)
     //: parallel_(parallel)
-    : acceptor_(own_io_, EndpointT(boost::asio::ip::tcp::v4(), static_cast<u16>(port)))
+    : acceptor_(own_io_, endpoint)
     , protocol_(std::move(protocol))
     , sessions_io_(io)
     , connection_(connection)
@@ -588,7 +589,7 @@ TcpAcceptor::TcpAcceptor(
     , iothread_started_(false)
 {
     logger_.info() << "Server created!";
-    logger_.info() << "Port: " << port;
+    logger_.info() << "Endpoint: " << endpoint;
 
     // Blocking I/O services
     for (auto io: sessions_io_) {
@@ -701,7 +702,7 @@ void TcpAcceptor::handle_accept(std::shared_ptr<ProtocolSession> session, boost:
 //     Tcp Server     //
 //                    //
 
-TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, int port, TcpServer::Mode mode)
+TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, EndpointT ep, TcpServer::Mode mode)
     : connection_(connection)
     , barrier(static_cast<u32>(concurrency) + 1)
     , stopped{0}
@@ -722,7 +723,7 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, 
     bool parallel = mode == Mode::SHARED_EVENT_LOOP;
     auto con = connection_.lock();
     if (con) {
-        auto serv = std::make_shared<TcpAcceptor>(iovec, port, con, parallel);
+        auto serv = std::make_shared<TcpAcceptor>(iovec, ep, con, parallel);
         serv->start();
         acceptors_.push_back(serv);
     } else {
@@ -734,7 +735,7 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection, int concurrency, 
 
 TcpServer::TcpServer(std::shared_ptr<DbConnection> connection,
                      int concurrency,
-                     std::map<int, std::unique_ptr<ProtocolSessionBuilder> > protocol_map,
+                     std::map<EndpointT, std::unique_ptr<ProtocolSessionBuilder> > protocol_map,
                      TcpServer::Mode mode)
     : connection_(connection)
     , barrier(static_cast<u32>(concurrency) + 1)
@@ -756,11 +757,11 @@ TcpServer::TcpServer(std::shared_ptr<DbConnection> connection,
     bool parallel = mode == Mode::SHARED_EVENT_LOOP;
     auto con = connection_.lock();
     for (auto& kv: protocol_map) {
-        int port = kv.first;
+        EndpointT endpoint = kv.first;
         auto protocol = std::move(kv.second);
-        logger_.info() << "Create acceptor for " << protocol->name() << ", port: " << port;
+        logger_.info() << "Create acceptor for " << protocol->name() << ", endpoint: " << endpoint;
         if (con) {
-            auto serv = std::make_shared<TcpAcceptor>(iovec, port, std::move(protocol), con, parallel);
+            auto serv = std::make_shared<TcpAcceptor>(iovec, endpoint, std::move(protocol), con, parallel);
             serv->start();
             acceptors_.push_back(serv);
         } else {
@@ -852,7 +853,7 @@ struct TcpServerBuilder {
         if (nworkers >= AKU_MAX_THREADS) {
             nworkers = AKU_MAX_THREADS - 4;
         }
-        std::map<int, std::unique_ptr<ProtocolSessionBuilder>> protocol_map;
+        std::map<EndpointT, std::unique_ptr<ProtocolSessionBuilder>> protocol_map;
         for (const auto& protocol: settings.protocols) {
             std::unique_ptr<ProtocolSessionBuilder> inst;
             if (protocol.name == "RESP") {
@@ -864,7 +865,7 @@ struct TcpServerBuilder {
             } else {
                 s_logger_.error() << "Unknown protocol " << protocol.name;
             }
-            protocol_map[protocol.port] = std::move(inst);
+            protocol_map[protocol.endpoint] = std::move(inst);
         }
         return std::make_shared<TcpServer>(con, nworkers, std::move(protocol_map));
     }

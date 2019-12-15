@@ -152,27 +152,29 @@ static int accept_connection(void           *cls,
 }
 }
 
-HttpServer::HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder> qproc, AccessControlList const& acl)
+HttpServer::HttpServer(boost::asio::ip::tcp::endpoint const& endpoint, std::shared_ptr<ReadOperationBuilder> qproc, AccessControlList const& acl)
     : acl_(acl)
     , proc_(qproc)
-    , port_(port)
+    , endpoint_(endpoint)
     , daemon_(nullptr)  // `start` should be called to initialize daemon_ correctly
 {
 }
 
-HttpServer::HttpServer(unsigned short port, std::shared_ptr<ReadOperationBuilder> qproc)
-    : HttpServer(port, qproc, AccessControlList())
+HttpServer::HttpServer(boost::asio::ip::tcp::endpoint const& endpoint, std::shared_ptr<ReadOperationBuilder> qproc)
+    : HttpServer(endpoint, qproc, AccessControlList())
 {
 }
 
 void HttpServer::start(SignalHandler* sig, int id) {
     logger.info() << "Start MHD daemon";
     daemon_ = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION,
-                               port_,
+                               endpoint_.port(),
                                NULL,
                                NULL,
                                &MHD::accept_connection,
                                proc_.get(),
+                               MHD_OPTION_SOCK_ADDR,
+                               endpoint_.data(),
                                MHD_OPTION_END);
     if (daemon_ == nullptr) {
         BOOST_THROW_EXCEPTION(std::runtime_error("can't start daemon"));
@@ -202,7 +204,7 @@ struct HttpServerBuilder {
             s_logger_.error() << "Can't initialize HTTP server, more than one protocol specified";
             BOOST_THROW_EXCEPTION(std::runtime_error("invalid http-server settings"));
         }
-        return std::make_shared<HttpServer>(settings.protocols.front().port, qproc);
+        return std::make_shared<HttpServer>(settings.protocols.front().endpoint, qproc);
     }
 };
 
