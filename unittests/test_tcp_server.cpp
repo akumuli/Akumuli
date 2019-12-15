@@ -557,3 +557,29 @@ BOOST_AUTO_TEST_CASE(Test_chain_replication_server_loopback_3) {
         BOOST_REQUIRE_EQUAL(event, "test-event");
     });
 }
+
+class TestTcpServer {
+    IOServiceT  io_;
+    AcceptorT   acceptor_;
+    SocketT     peer_;
+    std::vector<char> received_;
+public:
+    TestTcpServer()
+        : acceptor_(io_)
+        , peer_(io_)
+    {
+    }
+
+    void do_accept(EndpointT endpoint) {
+        boost::system::error_code ec;
+        acceptor_.accept(peer_, endpoint, ec);
+        BOOST_REQUIRE(!ec);
+    }
+
+    void do_recv(const std::string& match) {
+        boost::asio::read()
+    }
+};
+
+BOOST_AUTO_TEST_CASE(Test_forwarder_1) {
+}

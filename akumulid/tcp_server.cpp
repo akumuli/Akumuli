@@ -8,6 +8,7 @@
 #include <boost/exception/diagnostic_information.hpp>
 #include <boost/asio/streambuf.hpp>
 #include <boost/asio/basic_streambuf.hpp>
+#include <boost/circular_buffer.hpp>
 
 namespace Akumuli {
 
@@ -209,6 +210,101 @@ typedef TelnetSession<OpenTSDBProtocolParser> OpenTSDBSession;
 //                           //
 //     ChainSession          //
 //                           //
+
+class Forwarder : public std::enable_shared_from_this<Forwarder>
+{
+    EndpointT                       endpoint_;
+    SocketT                         socket_;
+    StrandT&                        strand_;  // Strand owned by the ChainSession
+    boost::circular_buffer<char>    ring_buffer_;
+    Logger                          logger_;
+public:
+    Forwarder(StrandT& strand, size_t capacity)
+        : socket_(strand.get_io_service())
+        , strand_(strand)
+        , ring_buffer_(capacity)
+        , logger_(make_unique_session_name())
+    {
+    }
+
+    void set_destination(EndpointT endpoint) {
+        if (endpoint == endpoint_) {
+            return;
+        }
+        socket_.close();
+        socket_.async_connect(endpoint,
+                              strand_.wrap(
+                                  boost::bind(&Forwarder::connect_handler,
+                                              this->shared_from_this(),
+                                              boost::asio::placeholders::error,
+                                              endpoint)));
+    }
+
+    /** Add new portion of data to the forwarder. The data will be transferred to the destination as
+      * soon as connection is established.
+      * The method can only be started from the strand context.
+      */
+    template<class FwdIter>
+    aku_Status forward(FwdIter begin, FwdIter end) {
+        if (strand_.running_in_this_thread()) {
+            // Allow ring buffer to fill and be consumed independently on both sides
+            size_t size = std::distance(begin, end);
+            bool empty = ring_buffer_.empty();
+            if (ring_buffer_.full() || size > (ring_buffer_.capacity() - ring_buffer_.size())) {
+                return AKU_EOVERFLOW;
+            }
+            auto pos = ring_buffer_.end();
+            ring_buffer_.insert(pos, begin, end);
+            if (empty) {
+                initiate_write();  // It's safe to initiate the write sequence here since
+                                   // the 'forward' method is executed from the same context
+                                   // as 'connect_handler' and 'write_handler'.
+            }
+            return AKU_SUCCESS;
+        }
+        return AKU_ENOT_PERMITTED;
+    }
+
+private:
+    void connect_handler(const boost::system::error_code& error, EndpointT endpoint) {
+        if (error) {
+            logger_.error() << error.message();
+        }
+        else {
+            endpoint_ = endpoint;
+            initiate_write();
+        }
+    }
+
+    void initiate_write() {
+        if (ring_buffer_.empty()) {
+            return;
+        }
+        auto b1 = ring_buffer_.array_one();
+        auto b2 = ring_buffer_.array_one();
+        std::vector<boost::asio::const_buffer> seq = {
+            boost::asio::const_buffer(b1.first, b1.second),
+            boost::asio::const_buffer(b2.first, b2.second),
+        };
+        socket_.async_write_some(std::move(seq),
+                                 strand_.wrap(
+                                     boost::bind(&Forwarder::write_handler,
+                                                 this->shared_from_this(),
+                                                 boost::asio::placeholders::bytes_transferred,
+                                                 boost::asio::placeholders::error)));
+    }
+
+    void write_handler(size_t bytes_transferred, const boost::system::error_code& error) {
+        if (error) {
+            logger_.error() << error.message();
+        }
+        else {
+            ring_buffer_.erase_begin(bytes_transferred);
+            // Start next
+            initiate_write();
+        }
+    }
+};
 
 /** Server session that inplements part of the chain-replication protocol.
  *  Must be created in the heap.
