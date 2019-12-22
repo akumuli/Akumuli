@@ -32,7 +32,7 @@ public:
     }
 
     double eval(MutableSample& mut) override {
-        return mut[ixval_];
+        return *mut[ixval_];
     }
 };
 
@@ -43,7 +43,7 @@ enum class Operator {
 
 class OperatorNode : public ExpressionNode {
     Operator op_;
-    std::vector<const std::unique_ptr<ExpressionNode>> children_;
+    std::vector<std::unique_ptr<ExpressionNode>> children_;
 public:
     template<class It>
     OperatorNode(Operator op, It begin, It end)
@@ -53,19 +53,17 @@ public:
     }
 };
 
-class ParseError : public std::runtime_error {
-    int linenum_;
-    std::string message_;
-public:
-    ParseError(const char* msg, int linenum)
-        : linenum_(linenum)
-        , message_(msg)
-    {}
+class ParseError : public std::exception {
+    const std::string message_;
 
-    std::string what() override {
-        std::stringstream s;
-        s << message_ << " at token " << linenum_;
-        return s.str();
+public:
+    ParseError(const char* msg)
+        : message_(msg)
+    {
+    }
+
+    const char* what() const noexcept override {
+        return message_.c_str();
     }
 };
 
@@ -91,21 +89,51 @@ Operator parseOperator(FwdIt origin, FwdIt& begin, FwdIt end) {
     BOOST_THROW_EXCEPTION(error);
 }
 
-template<class FwdIt>
-std::unique_ptr<ExpressionNode> buildNextNode(FwdIt origin, FwdIt& begin, FwdIt end) {
-    // Invariant: *begin == '('
-    if (begin == end) {
-        int pos = static_cast<int>(begin - origin);
-        ParseError error("Empty expression", pos);
-        BOOST_THROW_EXCEPTION(error);
+typedef boost::property_tree::ptree PTree;
+static const int DEPTH_LIMIT = 10;
+
+std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node) {
+    if (depth == DEPTH_LIMIT) {
+        ParseError err("expression depth limit exceded");
+        BOOST_THROW_EXCEPTION(err);
     }
-    Operator op = parseOperator(origin, begin, end);
-    // Parse input sequence until matching ')' will be found
+    // Expect array of: [op, arg1, arg2, ...,argN]
+    // i-th arg can be a node in which case recursive call
+    // have to be made.
+    std::string op;
+    std::vector<std::unique_ptr<ExpressionNode>> args;
+    for (auto it = node.begin(); it != node.end(); it++) {
+        if (it == node.begin()) {
+            // Parse operator
+            if (!it->first.empty()) {
+                // Expect value here
+                ParseError err("operator or function expected");
+                BOOST_THROW_EXCEPTION(err);
+            }
+            else {
+                op = it->second.data();
+            }
+        }
+        else {
+            // Parse arguments
+            if (!it->first.empty()) {
+                // Build sub-node
+                auto arg = buildNode(depth + 1, it->second);
+                args.push_back(std::move(arg));
+            }
+            else {
+                // TODO: if number create ConstantNode
+                // or create ValueNode
+                throw "Not implemented";
+            }
+        }
+    }
+    // TODO: build OperatorNode using op & args
+    throw "Not implemented";
 }
 
-static std::unique_ptr<ExpressionNode> parseExpression(std::string const& expr) {
-    // TODO: split expr by token
-    // TODO: invoke buildNextNode
+static std::unique_ptr<ExpressionNode> buildTree(const PTree& expr) {
+    return buildNode(0, expr);
 }
 
 
@@ -113,19 +141,20 @@ static std::unique_ptr<ExpressionNode> parseExpression(std::string const& expr) 
 // Eval
 // ----
 
-Eval::Eval(const std::string& expr, std::shared_ptr<Node> next)
-    : expr_(expr)
-    , next_(next)
-{
-}
 
 Eval::Eval(const boost::property_tree::ptree& ptree, std::shared_ptr<Node> next)
     : next_(next)
 {
     auto const& expr = ptree.get_child_optional("expr");
     if (expr) {
-        expr_ = expr->get_value<std::string>();
+        expr_ = buildTree(*expr);
     }
+}
+
+Eval::Eval(const boost::property_tree::ptree& expr, std::shared_ptr<Node> next, bool)
+    : next_(next)
+{
+    expr_ = buildTree(expr);
 }
 
 void Eval::complete() {
@@ -133,7 +162,9 @@ void Eval::complete() {
 }
 
 bool Eval::put(MutableSample &mut) {
-    // TODO: run expr
+    double val = expr_->eval(mut);
+    mut.collapse();
+    *mut[0] = val;
     return next_->put(mut);
 }
 

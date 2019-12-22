@@ -286,6 +286,22 @@ target_link_libraries(
 
 add_test(SAX test_sax)
 
+# Eval test
+add_executable(
+    test_eval
+    test_eval.cpp
+    ../libakumuli/query_processing/eval.cpp
+    ../libakumuli/queryprocessor_framework.cpp
+)
+
+target_link_libraries(
+    test_eval
+    ${Boost_LIBRARIES}
+    pthread
+)
+
+add_test(SAX test_sax)
+
 
 # Blockstore test
 add_executable(
