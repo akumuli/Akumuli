@@ -13,8 +13,11 @@ class ExpressionNode;
   */
 struct Eval : Node {
 
-    std::unique_ptr<ExpressionNode> expr_;
+    std::shared_ptr<ExpressionNode> expr_;
     std::shared_ptr<Node> next_;
+
+    Eval(const Eval&) = delete;
+    Eval& operator = (const Eval&) = delete;
 
     //! Bild eval node using 'expr' field of the ptree object.
     Eval(const boost::property_tree::ptree& ptree, std::shared_ptr<Node> next);

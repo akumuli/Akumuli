@@ -7,6 +7,7 @@ namespace QP {
 
 class ExpressionNode {
 public:
+    virtual ~ExpressionNode() = default;
     virtual double eval(MutableSample& mut) = 0;
 };
 
@@ -36,20 +37,64 @@ public:
     }
 };
 
-enum class Operator {
+enum class ExpressionOperator {
     SUM,
     MUL,
 };
 
+std::ostream& operator << (std::ostream& s, ExpressionOperator op) {
+    switch (op) {
+    case ExpressionOperator::MUL:
+        s << "*";
+        break;
+    case ExpressionOperator::SUM:
+        s << "+";
+        break;
+    }
+    return s;
+}
+
+std::istream& operator >> (std::istream& s, ExpressionOperator& op) {
+    char b;
+    s.read(&b, 1);
+    switch (b) {
+    case '*':
+        op = ExpressionOperator::MUL;
+        break;
+    case '+':
+        op = ExpressionOperator::SUM;
+        break;
+    }
+    return s;
+}
+
 class OperatorNode : public ExpressionNode {
-    Operator op_;
+    ExpressionOperator op_;
     std::vector<std::unique_ptr<ExpressionNode>> children_;
 public:
-    template<class It>
-    OperatorNode(Operator op, It begin, It end)
+    OperatorNode(ExpressionOperator op, std::vector<std::unique_ptr<ExpressionNode>>&& args)
         : op_(op)
-        , children_(begin, end)
+        , children_(std::move(args))
     {
+    }
+
+    double eval(MutableSample& mut) override {
+        std::vector<double> args;
+        std::transform(children_.begin(), children_.end(), std::back_inserter(args),
+                       [&mut](std::unique_ptr<ExpressionNode>& node) {
+                           return node->eval(mut);
+                       });
+        switch(op_) {
+        case ExpressionOperator::MUL:
+            return std::accumulate(args.begin(), args.end(), 1.0, [](double a, double b) {
+                return a * b;
+            });
+        case ExpressionOperator::SUM:
+            return std::accumulate(args.begin(), args.end(), 0.0, [](double a, double b) {
+                return a + b;
+            });
+        }
+        return NAN;
     }
 };
 
@@ -68,7 +113,7 @@ public:
 };
 
 template<class FwdIt>
-Operator parseOperator(FwdIt origin, FwdIt& begin, FwdIt end) {
+ExpressionOperator parseOperator(FwdIt origin, FwdIt& begin, FwdIt end) {
     // Invariant: *begin == operator
     int pos = static_cast<int>(begin - origin);
     if (begin == end) {
@@ -80,10 +125,10 @@ Operator parseOperator(FwdIt origin, FwdIt& begin, FwdIt end) {
     begin++;
 
     if (sym == "+") {
-        return Operator::SUM;
+        return ExpressionOperator::SUM;
     }
     else if (sym == "*") {
-        return Operator::MUL;
+        return ExpressionOperator::MUL;
     }
     ParseError error("Unexpected operator", pos);
     BOOST_THROW_EXCEPTION(error);
@@ -122,14 +167,28 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node) {
                 args.push_back(std::move(arg));
             }
             else {
-                // TODO: if number create ConstantNode
-                // or create ValueNode
-                throw "Not implemented";
+                std::unique_ptr<ExpressionNode> node;
+                auto value = it->second.data();
+                std::stringstream str(value);
+                double xs;
+                str >> xs;
+                if (!str.fail()) {
+                    node.reset(new ConstantNode(xs));
+                }
+                else {
+                    // TODO: lookup value in the dictionary
+                    throw "Not implemented";
+                }
+                args.push_back(std::move(node));
             }
         }
     }
-    // TODO: build OperatorNode using op & args
-    throw "Not implemented";
+    std::unique_ptr<ExpressionNode> res;
+    std::stringstream sop(op);
+    ExpressionOperator exop;
+    sop >> exop;
+    res.reset(new OperatorNode(exop, std::move(args)));
+    return res;
 }
 
 static std::unique_ptr<ExpressionNode> buildTree(const PTree& expr) {
