@@ -33,11 +33,12 @@ public:
     }
 
     double eval(MutableSample& mut) override {
-        return *mut[ixval_];
+        return *mut[static_cast<u32>(ixval_)];
     }
 };
 
 enum class ExpressionOperator {
+    UNKNOWN,
     SUM,
     MUL,
 };
@@ -49,6 +50,9 @@ std::ostream& operator << (std::ostream& s, ExpressionOperator op) {
         break;
     case ExpressionOperator::SUM:
         s << "+";
+        break;
+    case ExpressionOperator::UNKNOWN:
+        s << "_unknown_";
         break;
     }
     return s;
@@ -63,6 +67,9 @@ std::istream& operator >> (std::istream& s, ExpressionOperator& op) {
         break;
     case '+':
         op = ExpressionOperator::SUM;
+        break;
+    default:
+        op = ExpressionOperator::UNKNOWN;
         break;
     }
     return s;
@@ -93,6 +100,8 @@ public:
             return std::accumulate(args.begin(), args.end(), 0.0, [](double a, double b) {
                 return a + b;
             });
+        case ExpressionOperator::UNKNOWN:
+            break;
         }
         return NAN;
     }
@@ -107,37 +116,21 @@ public:
     {
     }
 
+    ParseError(std::string msg)
+        : message_(std::move(msg))
+    {
+    }
+
     const char* what() const noexcept override {
         return message_.c_str();
     }
 };
 
-template<class FwdIt>
-ExpressionOperator parseOperator(FwdIt origin, FwdIt& begin, FwdIt end) {
-    // Invariant: *begin == operator
-    int pos = static_cast<int>(begin - origin);
-    if (begin == end) {
-        ParseError error("Operator expected", pos);
-        BOOST_THROW_EXCEPTION(error);
-    }
-
-    const auto& sym = *begin;
-    begin++;
-
-    if (sym == "+") {
-        return ExpressionOperator::SUM;
-    }
-    else if (sym == "*") {
-        return ExpressionOperator::MUL;
-    }
-    ParseError error("Unexpected operator", pos);
-    BOOST_THROW_EXCEPTION(error);
-}
-
 typedef boost::property_tree::ptree PTree;
 static const int DEPTH_LIMIT = 10;
 
-std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node) {
+template<class LookupFn>
+std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node, const LookupFn& lookup) {
     if (depth == DEPTH_LIMIT) {
         ParseError err("expression depth limit exceded");
         BOOST_THROW_EXCEPTION(err);
@@ -161,14 +154,14 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node) {
         }
         else {
             // Parse arguments
-            if (!it->first.empty()) {
+            auto value = it->second.data();
+            if (value.empty()) {
                 // Build sub-node
-                auto arg = buildNode(depth + 1, it->second);
+                auto arg = buildNode(depth + 1, it->second, lookup);
                 args.push_back(std::move(arg));
             }
             else {
                 std::unique_ptr<ExpressionNode> node;
-                auto value = it->second.data();
                 std::stringstream str(value);
                 double xs;
                 str >> xs;
@@ -176,8 +169,13 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node) {
                     node.reset(new ConstantNode(xs));
                 }
                 else {
-                    // TODO: lookup value in the dictionary
-                    throw "Not implemented";
+                    auto ix = lookup(value);
+                    if (ix < 0) {
+                        // Field can't be found
+                        ParseError err("unknown field '" + value + "'");
+                        BOOST_THROW_EXCEPTION(err);
+                    }
+                    node.reset(new ValueNode(ix));
                 }
                 args.push_back(std::move(node));
             }
@@ -187,12 +185,12 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node) {
     std::stringstream sop(op);
     ExpressionOperator exop;
     sop >> exop;
+    if (exop == ExpressionOperator::UNKNOWN) {
+        ParseError err("unknown operator '" + op + "'");
+        BOOST_THROW_EXCEPTION(err);
+    }
     res.reset(new OperatorNode(exop, std::move(args)));
     return res;
-}
-
-static std::unique_ptr<ExpressionNode> buildTree(const PTree& expr) {
-    return buildNode(0, expr);
 }
 
 
@@ -206,14 +204,20 @@ Eval::Eval(const boost::property_tree::ptree& ptree, std::shared_ptr<Node> next)
 {
     auto const& expr = ptree.get_child_optional("expr");
     if (expr) {
-        expr_ = buildTree(*expr);
+        auto lookupFn = [](const std::string&) {
+            return 0;
+        };
+        expr_ = buildNode(0, *expr, lookupFn);
     }
 }
 
 Eval::Eval(const boost::property_tree::ptree& expr, std::shared_ptr<Node> next, bool)
     : next_(next)
 {
-    expr_ = buildTree(expr);
+    auto lookupFn = [](const std::string&) {
+        return 0;
+    };
+    expr_ = buildNode(0, expr, lookupFn);
 }
 
 void Eval::complete() {

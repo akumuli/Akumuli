@@ -40,17 +40,54 @@ BOOST_AUTO_TEST_CASE(Test_eval_1) {
     boost::property_tree::ptree ptree;
     boost::property_tree::json_parser::read_json(json, ptree);
     auto next = std::make_shared<MockNode>();
-    std::unique_ptr<Eval> eval;
-    eval.reset(new Eval(ptree, next, true));
+    Eval eval(ptree, next, true);
     aku_Sample src = {};
     src.paramid = 42;
     src.timestamp = 112233;
     src.payload.type = AKU_PAYLOAD_FLOAT;
     src.payload.size = sizeof(aku_Sample);
     MutableSample ms(&src);
-    eval->put(ms);
+    eval.put(ms);
     BOOST_REQUIRE_EQUAL(next->result_, 10);
-    eval.reset();
 }
+
+BOOST_AUTO_TEST_CASE(Test_eval_2) {
+    const char* tc = R"(["+", "foo", 2, 3, 4])";
+    std::stringstream json;
+    json << tc;
+    boost::property_tree::ptree ptree;
+    boost::property_tree::json_parser::read_json(json, ptree);
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, next, true);
+    aku_Sample src = {};
+    src.paramid = 42;
+    src.timestamp = 112233;
+    src.payload.type = AKU_PAYLOAD_FLOAT;
+    src.payload.size = sizeof(aku_Sample);
+    src.payload.float64 = 11;
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 20);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_3) {
+    const char* tc = R"(["+", "foo", 2, 3, 4, ["*", 3, 3]])";
+    std::stringstream json;
+    json << tc;
+    boost::property_tree::ptree ptree;
+    boost::property_tree::json_parser::read_json(json, ptree);
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, next, true);
+    aku_Sample src = {};
+    src.paramid = 42;
+    src.timestamp = 112233;
+    src.payload.type = AKU_PAYLOAD_FLOAT;
+    src.payload.size = sizeof(aku_Sample);
+    src.payload.float64 = 11;
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 29);
+}
+
 
 
