@@ -199,23 +199,63 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node, const Lo
 // ----
 
 
-Eval::Eval(const boost::property_tree::ptree& ptree, std::shared_ptr<Node> next)
+static std::unordered_map<std::string, int> buildNameToIndexMapping(const QP::ReshapeRequest& req)
+{
+    std::unordered_map<std::string, int> result;
+    const int ncol = static_cast<int>(req.select.columns.size());
+    for(int ix = 0; ix < ncol; ix++) {
+        if (req.select.columns[ix].ids.empty()) {
+            continue;
+        }
+        auto idcol = req.select.columns[ix].ids.front();
+        auto rawstr = req.select.matcher->id2str(idcol);
+        // copy metric name from the begining until the ' ' or ':'
+        std::string sname(rawstr.first, rawstr.first + rawstr.second);
+        auto it = std::find_if(sname.begin(), sname.end(), [](char c) {
+            return std::isspace(c) || c == ':';
+        });
+        result[std::string(sname.begin(), it)] = ix;
+    }
+    return result;
+}
+
+Eval::Eval(const boost::property_tree::ptree& ptree, const ReshapeRequest& req, std::shared_ptr<Node> next)
     : next_(next)
 {
     auto const& expr = ptree.get_child_optional("expr");
     if (expr) {
-        auto lookupFn = [](const std::string&) {
-            return 0;
+        std::unordered_map<std::string, int> lazyInitMap;
+        bool initialized = false;
+        auto lookupFn = [&](const std::string& fld) {
+            if (!initialized) {
+                initialized = true;
+                lazyInitMap = buildNameToIndexMapping(req);
+            }
+            auto it = lazyInitMap.find(fld);
+            if (it == lazyInitMap.end()) {
+                return -1;
+            }
+            return it->second;
         };
         expr_ = buildNode(0, *expr, lookupFn);
     }
 }
 
-Eval::Eval(const boost::property_tree::ptree& expr, std::shared_ptr<Node> next, bool)
+Eval::Eval(const boost::property_tree::ptree& expr, const ReshapeRequest& req, std::shared_ptr<Node> next, bool)
     : next_(next)
 {
-    auto lookupFn = [](const std::string&) {
-        return 0;
+    std::unordered_map<std::string, int> lazyInitMap;
+    bool initialized = false;
+    auto lookupFn = [&](const std::string& fld) {
+        if (!initialized) {
+            initialized = true;
+            lazyInitMap = buildNameToIndexMapping(req);
+        }
+        auto it = lazyInitMap.find(fld);
+        if (it == lazyInitMap.end()) {
+            return -1;
+        }
+        return it->second;
     };
     expr_ = buildNode(0, expr, lookupFn);
 }

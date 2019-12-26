@@ -26,7 +26,11 @@ void add_queryparsertoken_to_registry(const BaseQueryParserToken *ptr) {
     QueryParserRegistry::get().registry[ptr->get_tag()] = ptr;
 }
 
-std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next) {
+
+std::shared_ptr<Node> create_node(std::string tag,
+                                  boost::property_tree::ptree const& ptree,
+                                  const ReshapeRequest& req,
+                                  std::shared_ptr<Node> next) {
     auto& registry = QueryParserRegistry::get().registry;
     auto it = registry.find(tag);
     if (it == registry.end()) {

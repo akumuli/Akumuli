@@ -20,11 +20,11 @@ struct Eval : Node {
     Eval& operator = (const Eval&) = delete;
 
     //! Bild eval node using 'expr' field of the ptree object.
-    Eval(const boost::property_tree::ptree& ptree, std::shared_ptr<Node> next);
+    Eval(const boost::property_tree::ptree& expr, const ReshapeRequest &req, std::shared_ptr<Node> next);
 
     //! Bild eval node treating expr as a full expression tree (last parameter is
     //! ignored and needed only for overload resolution).
-    Eval(const boost::property_tree::ptree& expr, std::shared_ptr<Node> next, bool);
+    Eval(const boost::property_tree::ptree& expr, const ReshapeRequest &req, std::shared_ptr<Node> next, bool);
 
     virtual void complete();
 

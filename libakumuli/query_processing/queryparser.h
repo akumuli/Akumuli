@@ -115,7 +115,8 @@ struct QueryParser {
       */
     static std::tuple<aku_Status, std::vector<std::shared_ptr<Node> >, ErrorMsg> parse_processing_topology(
             boost::property_tree::ptree const& ptree,
-            InternalCursor* cursor);
+            InternalCursor* cursor,
+            const ReshapeRequest& req);
 };
 
 }}  // namespace

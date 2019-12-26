@@ -1911,12 +1911,14 @@ struct TerminalNode : QP::Node {
 
 
 std::tuple<aku_Status, std::shared_ptr<Node>, ErrorMsg>
-    make_sampler(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+    make_sampler(boost::property_tree::ptree const& ptree,
+                 std::shared_ptr<Node> next,
+                 const ReshapeRequest& req)
 {
     try {
         std::string name;
         name = ptree.get<std::string>("name");
-        return std::make_tuple(AKU_SUCCESS, QP::create_node(name, ptree, next), ErrorMsg());
+        return std::make_tuple(AKU_SUCCESS, QP::create_node(name, ptree, req, next), ErrorMsg());
     } catch (const boost::property_tree::ptree_error& e) {
         auto err = ErrorMsg("Query object has invalid `apply` field ") + e.what();
         Logger::msg(AKU_LOG_ERROR, err);
@@ -1936,7 +1938,8 @@ std::tuple<aku_Status, std::shared_ptr<Node>, ErrorMsg>
 
 std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>, ErrorMsg> QueryParser::parse_processing_topology(
     boost::property_tree::ptree const& ptree,
-    InternalCursor* cursor)
+    InternalCursor* cursor,
+    const ReshapeRequest& req)
 {
     std::shared_ptr<Node> terminal = std::make_shared<TerminalNode>(cursor);
     auto prev = terminal;
@@ -1948,7 +1951,7 @@ std::tuple<aku_Status, std::vector<std::shared_ptr<Node>>, ErrorMsg> QueryParser
             aku_Status status;
             std::shared_ptr<Node> node;
             ErrorMsg err;
-            std::tie(status, node, err) = make_sampler(it->second, prev);
+            std::tie(status, node, err) = make_sampler(it->second, prev, req);
             if (status == AKU_SUCCESS) {
                 result.push_back(node);
                 prev = node;

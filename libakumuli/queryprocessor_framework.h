@@ -302,6 +302,7 @@ struct IStreamProcessor {
 
 struct BaseQueryParserToken {
     virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree,
+                                         const ReshapeRequest&              req,
                                          std::shared_ptr<Node>              next) const = 0;
     virtual std::string get_tag() const                                                 = 0;
 };
@@ -313,6 +314,7 @@ std::vector<std::string> list_query_registry();
 
 //! Create new node using token registry
 std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree const& ptree,
+                                  const ReshapeRequest &req,
                                   std::shared_ptr<Node> next);
 
 /** Register new query type
@@ -326,8 +328,9 @@ template <class Target> struct QueryParserToken : BaseQueryParserToken {
     }
     virtual std::string           get_tag() const { return tag; }
     virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree,
+                                         const ReshapeRequest&              req,
                                          std::shared_ptr<Node>              next) const {
-        return std::make_shared<Target>(ptree, next);
+        return std::make_shared<Target>(ptree, req, next);
     }
 };
 }
