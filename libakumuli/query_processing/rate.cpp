@@ -13,7 +13,7 @@ SimpleRate::SimpleRate(std::shared_ptr<Node> next)
 {
 }
 
-SimpleRate::SimpleRate(const boost::property_tree::ptree&, std::shared_ptr<Node> next)
+SimpleRate::SimpleRate(const boost::property_tree::ptree&, const ReshapeRequest, std::shared_ptr<Node> next)
     : next_(next)
 {
 }
@@ -65,7 +65,7 @@ CumulativeSum::CumulativeSum(std::shared_ptr<Node> next)
 {
 }
 
-CumulativeSum::CumulativeSum(const boost::property_tree::ptree&, std::shared_ptr<Node> next)
+CumulativeSum::CumulativeSum(const boost::property_tree::ptree&, const ReshapeRequest &, std::shared_ptr<Node> next)
     : next_(next)
 {
 }

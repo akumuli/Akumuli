@@ -38,7 +38,7 @@ std::shared_ptr<Node> create_node(std::string tag,
         QueryParserError except(msg.c_str());
         BOOST_THROW_EXCEPTION(except);
     }
-    return it->second->create(ptree, next);
+    return it->second->create(ptree, req, next);
 }
 
 

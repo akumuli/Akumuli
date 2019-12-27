@@ -9,7 +9,7 @@ TopN::TopN(size_t N, std::shared_ptr<Node> next)
 {
 }
 
-TopN::TopN(const boost::property_tree::ptree& ptree, std::shared_ptr<Node> next)
+TopN::TopN(const boost::property_tree::ptree& ptree, const ReshapeRequest &, std::shared_ptr<Node> next)
     : next_(next)
 {
     N_ = ptree.get<size_t>("N");
