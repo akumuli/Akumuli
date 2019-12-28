@@ -5,6 +5,25 @@ namespace Akumuli {
 namespace QP {
 
 
+class ParseError : public std::exception {
+    const std::string message_;
+
+public:
+    ParseError(const char* msg)
+        : message_(msg)
+    {
+    }
+
+    ParseError(std::string msg)
+        : message_(std::move(msg))
+    {
+    }
+
+    const char* what() const noexcept override {
+        return message_.c_str();
+    }
+};
+
 class ExpressionNode {
 public:
     virtual ~ExpressionNode() = default;
@@ -78,26 +97,27 @@ std::istream& operator >> (std::istream& s, ExpressionOperator& op) {
 class OperatorNode : public ExpressionNode {
     ExpressionOperator op_;
     std::vector<std::unique_ptr<ExpressionNode>> children_;
+    std::vector<double> args_;
 public:
     OperatorNode(ExpressionOperator op, std::vector<std::unique_ptr<ExpressionNode>>&& args)
         : op_(op)
         , children_(std::move(args))
+        , args_(children_.size())
     {
     }
 
     double eval(MutableSample& mut) override {
-        std::vector<double> args;
-        std::transform(children_.begin(), children_.end(), std::back_inserter(args),
+        std::transform(children_.begin(), children_.end(), args_.begin(),
                        [&mut](std::unique_ptr<ExpressionNode>& node) {
                            return node->eval(mut);
                        });
         switch(op_) {
         case ExpressionOperator::MUL:
-            return std::accumulate(args.begin(), args.end(), 1.0, [](double a, double b) {
+            return std::accumulate(args_.begin(), args_.end(), 1.0, [](double a, double b) {
                 return a * b;
             });
         case ExpressionOperator::SUM:
-            return std::accumulate(args.begin(), args.end(), 0.0, [](double a, double b) {
+            return std::accumulate(args_.begin(), args_.end(), 0.0, [](double a, double b) {
                 return a + b;
             });
         case ExpressionOperator::UNKNOWN:
@@ -107,23 +127,85 @@ public:
     }
 };
 
-class ParseError : public std::exception {
-    const std::string message_;
+/**
+ * Function call expression node.
+ * Base interface:
+ * - double apply(It begin, It end);
+ * - bool check_arity(size_t n, string* errormsg);
+ * - static const char* func_name
+ * - static const char* func_help
+ */
+template<class Base>
+struct FunctionCallNode : ExpressionNode, Base
+{
+    std::vector<std::unique_ptr<ExpressionNode>> children_;
+    std::vector<double> args_;
 
-public:
-    ParseError(const char* msg)
-        : message_(msg)
+    FunctionCallNode(ExpressionOperator op, std::vector<std::unique_ptr<ExpressionNode>>&& args)
+        : children_(std::move(args))
+        , args_(children_.size())
     {
+        std::string errormsg;
+        if (!static_cast<Base*>(this)->check_arity(children_.size(), &errormsg)) {
+            ParseError err("function " + Base::func_name + " error: " + errormsg);
+            BOOST_THROW_EXCEPTION(err);
+        }
     }
 
-    ParseError(std::string msg)
-        : message_(std::move(msg))
-    {
+    double eval(MutableSample& mut) override {
+        std::transform(children_.begin(), children_.end(), args_.begin(),
+                       [&mut](std::unique_ptr<ExpressionNode>& node) {
+                           return node->eval(mut);
+                       });
+        return static_cast<Base*>(this)->apply(args_.begin(), args_.end());
     }
+};
 
-    const char* what() const noexcept override {
-        return message_.c_str();
-    }
+struct BuiltInFunctions {
+    struct Min {
+        template<class It>
+        double apply(It begin, It end) {
+            return std::min_element(begin, end);
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n == 0) {
+                *error = "function require at least one parameter";
+                return false;
+            }
+            return true;
+        }
+        constexpr static const char* func_name = "min";
+    };
+
+    struct Max {
+        template<class It>
+        double apply(It begin, It end) {
+            return std::max_element(begin, end);
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n == 0) {
+                *error = "function require at least one parameter";
+                return false;
+            }
+            return true;
+        }
+        constexpr static const char* func_name = "max";
+    };
+
+    struct Abs {
+        template<class It>
+        double apply(It begin, It end) {
+            return std::abs(*begin);
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n == 1) {
+                return true;
+            }
+            *error = "single argument expected";
+            return false;
+        }
+        constexpr static const char* func_name = "abs";
+    };
 };
 
 typedef boost::property_tree::ptree PTree;
@@ -267,8 +349,11 @@ void Eval::complete() {
 bool Eval::put(MutableSample &mut) {
     double val = expr_->eval(mut);
     mut.collapse();
-    *mut[0] = val;
-    return next_->put(mut);
+    if (std::isnormal(val)) {
+        *mut[0] = val;
+        return next_->put(mut);
+    }
+    return true;
 }
 
 void Eval::set_error(aku_Status status) {
