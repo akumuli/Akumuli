@@ -1,5 +1,7 @@
 #include "eval.h"
 #include <sstream>
+#include <unordered_map>
+#include <functional>
 
 namespace Akumuli {
 namespace QP {
@@ -127,27 +129,61 @@ public:
     }
 };
 
+
+struct FunctionCallRegistry {
+    typedef std::unique_ptr<ExpressionNode> NodeT;
+    typedef std::function<NodeT (std::vector<NodeT>&&)> CtorT;
+
+private:
+    std::unordered_map<std::string, CtorT> registry_;
+    FunctionCallRegistry() = default;
+
+public:
+    static FunctionCallRegistry& get() {
+        static FunctionCallRegistry s_registry;
+        return s_registry;
+    }
+
+    void add(std::string name, CtorT&& ctor) {
+        registry_[std::move(name)] = ctor;
+    }
+
+    NodeT create(const std::string& fname, std::vector<NodeT>&& args) {
+        NodeT res;
+        auto it = registry_.find(fname);
+        if (it == registry_.end()) {
+            return res;
+        }
+        return it->second(std::move(args));
+    }
+};
+
 /**
  * Function call expression node.
  * Base interface:
  * - double apply(It begin, It end);
  * - bool check_arity(size_t n, string* errormsg);
  * - static const char* func_name
- * - static const char* func_help
  */
 template<class Base>
 struct FunctionCallNode : ExpressionNode, Base
 {
+    typedef FunctionCallNode<Base> NodeT;
+
     std::vector<std::unique_ptr<ExpressionNode>> children_;
     std::vector<double> args_;
 
-    FunctionCallNode(ExpressionOperator op, std::vector<std::unique_ptr<ExpressionNode>>&& args)
-        : children_(std::move(args))
+    FunctionCallNode(FunctionCallNode const&) = delete;
+    FunctionCallNode& operator = (FunctionCallNode const&) = delete;
+
+    template<class ArgT>
+    FunctionCallNode(ArgT&& args)
+        : children_(std::forward<ArgT>(args))
         , args_(children_.size())
     {
         std::string errormsg;
         if (!static_cast<Base*>(this)->check_arity(children_.size(), &errormsg)) {
-            ParseError err("function " + Base::func_name + " error: " + errormsg);
+            ParseError err(std::string("function ") + Base::func_name + " error: " + errormsg);
             BOOST_THROW_EXCEPTION(err);
         }
     }
@@ -159,13 +195,32 @@ struct FunctionCallNode : ExpressionNode, Base
                        });
         return static_cast<Base*>(this)->apply(args_.begin(), args_.end());
     }
+
+    static std::unique_ptr<NodeT> create_node(std::vector<std::unique_ptr<ExpressionNode>>&& args) {
+        std::unique_ptr<NodeT> result;
+        result.reset(new NodeT(std::move(args)));
+        return result;
+    }
+
+private:
+    struct RegistryToken {
+        RegistryToken() {
+            FunctionCallRegistry::get().add(Base::func_name, &create_node);
+        }
+    };
+
+    static RegistryToken regtoken_;
 };
 
 struct BuiltInFunctions {
     struct Min {
         template<class It>
         double apply(It begin, It end) {
-            return std::min_element(begin, end);
+            auto it = std::min_element(begin, end);
+            if (it != end) {
+                return *it;
+            }
+            return NAN;
         }
         bool check_arity(size_t n, std::string* error) const {
             if (n == 0) {
@@ -180,7 +235,11 @@ struct BuiltInFunctions {
     struct Max {
         template<class It>
         double apply(It begin, It end) {
-            return std::max_element(begin, end);
+            auto it = std::max_element(begin, end);
+            if (it != end) {
+                return *it;
+            }
+            return NAN;
         }
         bool check_arity(size_t n, std::string* error) const {
             if (n == 0) {
@@ -207,6 +266,10 @@ struct BuiltInFunctions {
         constexpr static const char* func_name = "abs";
     };
 };
+
+template struct FunctionCallNode<BuiltInFunctions::Max>;
+template struct FunctionCallNode<BuiltInFunctions::Min>;
+template struct FunctionCallNode<BuiltInFunctions::Abs>;
 
 typedef boost::property_tree::ptree PTree;
 static const int DEPTH_LIMIT = 10;
