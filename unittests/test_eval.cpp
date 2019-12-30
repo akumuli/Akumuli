@@ -172,6 +172,7 @@ BOOST_AUTO_TEST_CASE(Test_eval_5) {
 }
 
 BOOST_AUTO_TEST_CASE(Test_eval_6) {
+    // Test min function
     ReshapeRequest req;
     init_request(&req);
     auto ptree = init_ptree(R"(["min", "col1", 10, "col0", "col2", "col3"])");
@@ -183,5 +184,48 @@ BOOST_AUTO_TEST_CASE(Test_eval_6) {
     eval.put(ms);
     BOOST_REQUIRE_EQUAL(next->result_, 3);
 }
+
+BOOST_AUTO_TEST_CASE(Test_eval_6_fold) {
+    // Test min function with const propogation
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["min", "1", 10, "-10", "2", "100"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {0});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, -10);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_7) {
+    // Test max function
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["max", "col1", 10, "col0", "col2", "col3"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {3, 5, 7, 11});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 11);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_7_fold) {
+    // Test max function with const propogation
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["max", "1", 10, "-10", "2", "100"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {0});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 100);
+}
+
 
 

@@ -30,6 +30,7 @@ class ExpressionNode {
 public:
     virtual ~ExpressionNode() = default;
     virtual double eval(MutableSample& mut) = 0;
+    virtual std::tuple<double, bool> fold() = 0;
 };
 
 class ConstantNode : public ExpressionNode {
@@ -43,6 +44,10 @@ public:
     double eval(MutableSample&) override {
         return cval_;
     }
+
+    std::tuple<double, bool> fold() override {
+        return std::make_tuple(cval_, true);
+    }
 };
 
 class ValueNode : public ExpressionNode {
@@ -55,6 +60,10 @@ public:
 
     double eval(MutableSample& mut) override {
         return *mut[static_cast<u32>(ixval_)];
+    }
+
+    std::tuple<double, bool> fold() override {
+        return std::make_tuple(0.0, false);
     }
 };
 
@@ -89,9 +98,10 @@ public:
 /**
  * Function call expression node.
  * Base interface:
- * - double apply(It begin, It end);
- * - bool check_arity(size_t n, string* errormsg);
+ * - double call(It begin, It end);
  * - static const char* func_name
+ * - bool apply(args, string* errormsg);
+ *   - Partially apply function arguments
  */
 template<class Base>
 struct FunctionCallNode : ExpressionNode, Base
@@ -107,17 +117,17 @@ struct FunctionCallNode : ExpressionNode, Base
     template<class ArgT>
     FunctionCallNode(ArgT&& args)
         : children_(std::forward<ArgT>(args))
-        , args_(children_.size())
     {
         std::string errormsg;
-        if (!static_cast<Base*>(this)->check_arity(children_.size(), &errormsg)) {
+        if (!static_cast<Base*>(this)->apply(children_, &errormsg)) {
             ParseError err(std::string("function ") + Base::func_name + " error: " + errormsg);
             BOOST_THROW_EXCEPTION(err);
         }
-        if (!static_cast<Base*>(this)->carry(children_, &errormsg)) {
-            ParseError err(std::string("function ") + Base::func_name + " error: " + errormsg);
-            BOOST_THROW_EXCEPTION(err);
-        }
+        args_.resize(children_.size(), 0);
+    }
+
+    std::tuple<double, bool> fold() override {
+        return std::make_tuple(0.0, false);
     }
 
     double eval(MutableSample& mut) override {
@@ -125,7 +135,7 @@ struct FunctionCallNode : ExpressionNode, Base
                        [&mut](std::unique_ptr<ExpressionNode>& node) {
                            return node->eval(mut);
                        });
-        return static_cast<Base*>(this)->apply(args_.begin(), args_.end());
+        return static_cast<Base*>(this)->call(args_.begin(), args_.end());
     }
 
     static std::unique_ptr<NodeT> create_node(std::vector<std::unique_ptr<ExpressionNode>>&& args) {
@@ -149,7 +159,7 @@ typename FunctionCallNode<Base>::RegistryToken FunctionCallNode<Base>::regtoken_
 
 struct BuiltInFunctions {
     struct BuiltInFn {
-        bool carry(std::vector<std::unique_ptr<ExpressionNode>>&, std::string*) {
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>&, std::string*) {
             // Default implementation
             return true;
         }
@@ -157,9 +167,13 @@ struct BuiltInFunctions {
 
     // Arithmetics
     struct Sum : BuiltInFn {
+        double unit_;
+
+        Sum() : unit_(0) {}
+
         template<class It>
-        double apply(It begin, It end) {
-            auto res = std::accumulate(begin, end, 0.0, [](double a, double b) {
+        double call(It begin, It end) {
+            auto res = std::accumulate(begin, end, unit_, [](double a, double b) {
                 return a + b;
             });
             return res;
@@ -171,13 +185,36 @@ struct BuiltInFunctions {
             }
             return true;
         }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& args, std::string* err) {
+            if (!check_arity(args.size(), err)) {
+                return false;
+            }
+            double sum = 0.0;
+            auto it = std::remove_if(args.begin(), args.end(), [&sum](std::unique_ptr<ExpressionNode>& n) {
+                bool folded;
+                double value;
+                std::tie(value, folded) = n->fold();
+                if (folded) {
+                    sum += value;
+                    return true;
+                }
+                return false;
+            });
+            unit_ = sum;
+            args.erase(it, args.end());
+            return true;
+        }
         constexpr static const char* func_name = "+";
     };
 
     struct Mul : BuiltInFn {
+        double unit_;
+
+        Mul() : unit_(1.0) {}
+
         template<class It>
-        double apply(It begin, It end) {
-            auto res = std::accumulate(begin, end, 1.0, [](double a, double b) {
+        double call(It begin, It end) {
+            auto res = std::accumulate(begin, end, unit_, [](double a, double b) {
                 return a * b;
             });
             return res;
@@ -189,18 +226,41 @@ struct BuiltInFunctions {
             }
             return true;
         }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& args, std::string* err) {
+            if (!check_arity(args.size(), err)) {
+                return false;
+            }
+            double unit = 1.0;
+            auto it = std::remove_if(args.begin(), args.end(), [&unit](std::unique_ptr<ExpressionNode>& n) {
+                bool folded;
+                double value;
+                std::tie(value, folded) = n->fold();
+                if (folded) {
+                    unit *= value;
+                    return true;
+                }
+                return false;
+            });
+            unit_ = unit;
+            args.erase(it, args.end());
+            return true;
+        }
         constexpr static const char* func_name = "*";
     };
 
     // General
     struct Min : BuiltInFn {
+        double baseline_;
+
+        Min() : baseline_(std::numeric_limits<double>::max()) {}
+
         template<class It>
-        double apply(It begin, It end) {
+        double call(It begin, It end) {
             auto it = std::min_element(begin, end);
             if (it != end) {
-                return *it;
+                return std::min(*it, baseline_);
             }
-            return NAN;
+            return baseline_;
         }
         bool check_arity(size_t n, std::string* error) const {
             if (n == 0) {
@@ -209,23 +269,65 @@ struct BuiltInFunctions {
             }
             return true;
         }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& args, std::string* err) {
+            if (!check_arity(args.size(), err)) {
+                return false;
+            }
+            double minval = baseline_;
+            auto it = std::remove_if(args.begin(), args.end(), [&minval](std::unique_ptr<ExpressionNode>& n) {
+                bool folded;
+                double value;
+                std::tie(value, folded) = n->fold();
+                if (folded) {
+                    minval = std::min(minval, value);
+                    return true;
+                }
+                return false;
+            });
+            baseline_ = minval;
+            args.erase(it, args.end());
+            return true;
+        }
         constexpr static const char* func_name = "min";
     };
 
     struct Max : BuiltInFn {
+        double baseline_;
+
+        Max() : baseline_(std::numeric_limits<double>::lowest()) {}
+
         template<class It>
-        double apply(It begin, It end) {
+        double call(It begin, It end) {
             auto it = std::max_element(begin, end);
             if (it != end) {
-                return *it;
+                return std::max(*it, baseline_);
             }
-            return NAN;
+            return baseline_;
         }
         bool check_arity(size_t n, std::string* error) const {
             if (n == 0) {
                 *error = "function require at least one parameter";
                 return false;
             }
+            return true;
+        }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& args, std::string* err) {
+            if (!check_arity(args.size(), err)) {
+                return false;
+            }
+            double maxval = baseline_;
+            auto it = std::remove_if(args.begin(), args.end(), [&maxval](std::unique_ptr<ExpressionNode>& n) {
+                bool folded;
+                double value;
+                std::tie(value, folded) = n->fold();
+                if (folded) {
+                    maxval = std::max(maxval, value);
+                    return true;
+                }
+                return false;
+            });
+            baseline_ = maxval;
+            args.erase(it, args.end());
             return true;
         }
         constexpr static const char* func_name = "max";
@@ -233,7 +335,7 @@ struct BuiltInFunctions {
 
     struct Abs : BuiltInFn {
         template<class It>
-        double apply(It begin, It end) {
+        double call(It begin, It end) {
             return std::abs(*begin);
         }
         bool check_arity(size_t n, std::string* error) const {
@@ -242,6 +344,9 @@ struct BuiltInFunctions {
             }
             *error = "single argument expected";
             return false;
+        }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {
+            return check_arity(children.size(), err);
         }
         constexpr static const char* func_name = "abs";
     };
@@ -255,9 +360,24 @@ struct BuiltInFunctions {
 
         SMA() : N(0), pos(0), sum(0) {}
 
-        bool carry(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {
+        template<class It>
+        double call(It begin, It end) {
+            assert(begin != end);
+            queue_.at(pos % N) = *begin;
+            pos++;
+            if (pos > N) {
+                double prev = queue_.at(static_cast<size_t>((pos - N) % N));
+                sum -= prev;
+                return sum / N;
+            }
+            return sum / pos;
+        }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {
             static aku_Sample empty;
             static MutableSample mempty(&empty);
+            if (!check_arity(children.size(), err)) {
+                return false;
+            }
             // First parameter is supposed to be constant
             auto& c = children.front();
             auto cnode = dynamic_cast<ConstantNode*>(c.get());
@@ -270,19 +390,6 @@ struct BuiltInFunctions {
             queue_.resize(N);
             children.erase(children.begin());
             return true;
-        }
-
-        template<class It>
-        double apply(It begin, It end) {
-            assert(begin != end);
-            queue_.at(pos % N) = *begin;
-            pos++;
-            if (pos > N) {
-                double prev = queue_.at(static_cast<size_t>((pos - N) % N));
-                sum -= prev;
-                return sum / N;
-            }
-            return sum / pos;
         }
         bool check_arity(size_t n, std::string* error) const {
             if (n == 2) {
