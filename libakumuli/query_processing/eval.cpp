@@ -58,78 +58,6 @@ public:
     }
 };
 
-enum class ExpressionOperator {
-    UNKNOWN,
-    SUM,
-    MUL,
-};
-
-std::ostream& operator << (std::ostream& s, ExpressionOperator op) {
-    switch (op) {
-    case ExpressionOperator::MUL:
-        s << "*";
-        break;
-    case ExpressionOperator::SUM:
-        s << "+";
-        break;
-    case ExpressionOperator::UNKNOWN:
-        s << "_unknown_";
-        break;
-    }
-    return s;
-}
-
-std::istream& operator >> (std::istream& s, ExpressionOperator& op) {
-    char b;
-    s.read(&b, 1);
-    switch (b) {
-    case '*':
-        op = ExpressionOperator::MUL;
-        break;
-    case '+':
-        op = ExpressionOperator::SUM;
-        break;
-    default:
-        op = ExpressionOperator::UNKNOWN;
-        break;
-    }
-    return s;
-}
-
-class OperatorNode : public ExpressionNode {
-    ExpressionOperator op_;
-    std::vector<std::unique_ptr<ExpressionNode>> children_;
-    std::vector<double> args_;
-public:
-    OperatorNode(ExpressionOperator op, std::vector<std::unique_ptr<ExpressionNode>>&& args)
-        : op_(op)
-        , children_(std::move(args))
-        , args_(children_.size())
-    {
-    }
-
-    double eval(MutableSample& mut) override {
-        std::transform(children_.begin(), children_.end(), args_.begin(),
-                       [&mut](std::unique_ptr<ExpressionNode>& node) {
-                           return node->eval(mut);
-                       });
-        switch(op_) {
-        case ExpressionOperator::MUL:
-            return std::accumulate(args_.begin(), args_.end(), 1.0, [](double a, double b) {
-                return a * b;
-            });
-        case ExpressionOperator::SUM:
-            return std::accumulate(args_.begin(), args_.end(), 0.0, [](double a, double b) {
-                return a + b;
-            });
-        case ExpressionOperator::UNKNOWN:
-            break;
-        }
-        return NAN;
-    }
-};
-
-
 struct FunctionCallRegistry {
     typedef std::unique_ptr<ExpressionNode> NodeT;
     typedef std::function<NodeT (std::vector<NodeT>&&)> CtorT;
@@ -212,7 +140,48 @@ private:
     static RegistryToken regtoken_;
 };
 
+template<class Base>
+typename FunctionCallNode<Base>::RegistryToken FunctionCallNode<Base>::regtoken_;
+
 struct BuiltInFunctions {
+    // Arithmetics
+    struct Sum {
+        template<class It>
+        double apply(It begin, It end) {
+            auto res = std::accumulate(begin, end, 0.0, [](double a, double b) {
+                return a + b;
+            });
+            return res;
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n == 0) {
+                *error = "function require at least one parameter";
+                return false;
+            }
+            return true;
+        }
+        constexpr static const char* func_name = "+";
+    };
+
+    struct Mul {
+        template<class It>
+        double apply(It begin, It end) {
+            auto res = std::accumulate(begin, end, 1.0, [](double a, double b) {
+                return a * b;
+            });
+            return res;
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n == 0) {
+                *error = "function require at least one parameter";
+                return false;
+            }
+            return true;
+        }
+        constexpr static const char* func_name = "*";
+    };
+
+    // General
     struct Min {
         template<class It>
         double apply(It begin, It end) {
@@ -267,6 +236,10 @@ struct BuiltInFunctions {
     };
 };
 
+// Arithmetic
+template struct FunctionCallNode<BuiltInFunctions::Sum>;
+template struct FunctionCallNode<BuiltInFunctions::Mul>;
+// General
 template struct FunctionCallNode<BuiltInFunctions::Max>;
 template struct FunctionCallNode<BuiltInFunctions::Min>;
 template struct FunctionCallNode<BuiltInFunctions::Abs>;
@@ -327,14 +300,11 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node, const Lo
         }
     }
     std::unique_ptr<ExpressionNode> res;
-    std::stringstream sop(op);
-    ExpressionOperator exop;
-    sop >> exop;
-    if (exop == ExpressionOperator::UNKNOWN) {
-        ParseError err("unknown operator '" + op + "'");
+    res = FunctionCallRegistry::get().create(op, std::move(args));
+    if (!res) {
+        ParseError err("unknown operation '" + op + "'");
         BOOST_THROW_EXCEPTION(err);
     }
-    res.reset(new OperatorNode(exop, std::move(args)));
     return res;
 }
 
