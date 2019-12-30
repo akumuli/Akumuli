@@ -268,6 +268,7 @@ struct BuiltInFunctions {
             double val = cnode->eval(mempty);
             N = static_cast<int>(val);
             queue_.resize(N);
+            children.erase(children.begin());
             return true;
         }
 
