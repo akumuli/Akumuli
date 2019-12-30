@@ -127,6 +127,11 @@ struct FunctionCallNode : ExpressionNode, Base
     }
 
     std::tuple<double, bool> fold() override {
+        if (args_.empty()) {
+            // can do this since it's folded
+            double res = static_cast<Base*>(this)->call(args_.begin(), args_.end());
+            return std::make_tuple(res, true);
+        }
         return std::make_tuple(0.0, false);
     }
 

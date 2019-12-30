@@ -227,5 +227,19 @@ BOOST_AUTO_TEST_CASE(Test_eval_7_fold) {
     BOOST_REQUIRE_EQUAL(next->result_, 100);
 }
 
+BOOST_AUTO_TEST_CASE(Test_eval_8_fold) {
+    // Test nested func-call folding
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["max", "1", 10, ["min", "-10", "2", "100"]])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {0});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 10);
+}
+
 
 
