@@ -114,6 +114,10 @@ struct FunctionCallNode : ExpressionNode, Base
             ParseError err(std::string("function ") + Base::func_name + " error: " + errormsg);
             BOOST_THROW_EXCEPTION(err);
         }
+        if (!static_cast<Base*>(this)->carry(children_, &errormsg)) {
+            ParseError err(std::string("function ") + Base::func_name + " error: " + errormsg);
+            BOOST_THROW_EXCEPTION(err);
+        }
     }
 
     double eval(MutableSample& mut) override {
@@ -144,8 +148,15 @@ template<class Base>
 typename FunctionCallNode<Base>::RegistryToken FunctionCallNode<Base>::regtoken_;
 
 struct BuiltInFunctions {
+    struct BuiltInFn {
+        bool carry(std::vector<std::unique_ptr<ExpressionNode>>&, std::string*) {
+            // Default implementation
+            return true;
+        }
+    };
+
     // Arithmetics
-    struct Sum {
+    struct Sum : BuiltInFn {
         template<class It>
         double apply(It begin, It end) {
             auto res = std::accumulate(begin, end, 0.0, [](double a, double b) {
@@ -163,7 +174,7 @@ struct BuiltInFunctions {
         constexpr static const char* func_name = "+";
     };
 
-    struct Mul {
+    struct Mul : BuiltInFn {
         template<class It>
         double apply(It begin, It end) {
             auto res = std::accumulate(begin, end, 1.0, [](double a, double b) {
@@ -182,7 +193,7 @@ struct BuiltInFunctions {
     };
 
     // General
-    struct Min {
+    struct Min : BuiltInFn {
         template<class It>
         double apply(It begin, It end) {
             auto it = std::min_element(begin, end);
@@ -201,7 +212,7 @@ struct BuiltInFunctions {
         constexpr static const char* func_name = "min";
     };
 
-    struct Max {
+    struct Max : BuiltInFn {
         template<class It>
         double apply(It begin, It end) {
             auto it = std::max_element(begin, end);
@@ -220,7 +231,7 @@ struct BuiltInFunctions {
         constexpr static const char* func_name = "max";
     };
 
-    struct Abs {
+    struct Abs : BuiltInFn {
         template<class It>
         double apply(It begin, It end) {
             return std::abs(*begin);
@@ -234,6 +245,53 @@ struct BuiltInFunctions {
         }
         constexpr static const char* func_name = "abs";
     };
+
+    // Windowed functions
+    struct SMA : BuiltInFn {
+        int N;
+        int pos;
+        double sum;
+        std::vector<double> queue_;
+
+        SMA() : N(0), pos(0), sum(0) {}
+
+        bool carry(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {
+            static aku_Sample empty;
+            static MutableSample mempty(&empty);
+            // First parameter is supposed to be constant
+            auto& c = children.front();
+            auto cnode = dynamic_cast<ConstantNode*>(c.get());
+            if (cnode == nullptr) {
+                *err = "first 'sma' parameter should be constant";
+                return false;
+            }
+            double val = cnode->eval(mempty);
+            N = static_cast<int>(val);
+            queue_.resize(N);
+            return true;
+        }
+
+        template<class It>
+        double apply(It begin, It end) {
+            assert(begin != end);
+            queue_.at(pos % N) = *begin;
+            pos++;
+            if (pos > N) {
+                double prev = queue_.at(static_cast<size_t>((pos - N) % N));
+                sum -= prev;
+                return sum / N;
+            }
+            return sum / pos;
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n == 2) {
+                return true;
+            }
+            *error = "two arguments expected";
+            return false;
+        }
+        constexpr static const char* func_name = "sma";
+    };
 };
 
 // Arithmetic
@@ -243,6 +301,8 @@ template struct FunctionCallNode<BuiltInFunctions::Mul>;
 template struct FunctionCallNode<BuiltInFunctions::Max>;
 template struct FunctionCallNode<BuiltInFunctions::Min>;
 template struct FunctionCallNode<BuiltInFunctions::Abs>;
+// Window methods
+template struct FunctionCallNode<BuiltInFunctions::SMA>;
 
 typedef boost::property_tree::ptree PTree;
 static const int DEPTH_LIMIT = 10;
