@@ -368,29 +368,25 @@ struct BuiltInFunctions {
         template<class It>
         double call(It begin, It end) {
             assert(begin != end);
+            sum -= queue_.at(pos % N);
             queue_.at(pos % N) = *begin;
+            sum += *begin;
             pos++;
-            if (pos > N) {
-                double prev = queue_.at(static_cast<size_t>((pos - N) % N));
-                sum -= prev;
-                return sum / N;
-            }
-            return sum / pos;
+            return sum / std::min(pos, N);
         }
         bool apply(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {
-            static aku_Sample empty;
-            static MutableSample mempty(&empty);
             if (!check_arity(children.size(), err)) {
                 return false;
             }
             // First parameter is supposed to be constant
             auto& c = children.front();
-            auto cnode = dynamic_cast<ConstantNode*>(c.get());
-            if (cnode == nullptr) {
+            bool success;
+            double val;
+            std::tie(val, success) = c->fold();
+            if (!success) {
                 *err = "first 'sma' parameter should be constant";
                 return false;
             }
-            double val = cnode->eval(mempty);
             N = static_cast<int>(val);
             queue_.resize(N);
             children.erase(children.begin());

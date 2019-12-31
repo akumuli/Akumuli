@@ -241,5 +241,38 @@ BOOST_AUTO_TEST_CASE(Test_eval_8_fold) {
     BOOST_REQUIRE_EQUAL(next->result_, 10);
 }
 
+BOOST_AUTO_TEST_CASE(Test_eval_9_sma) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["sma", 2, "col0"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {10});
+    MutableSample ms0(&src);
+    eval.put(ms0);
+    BOOST_REQUIRE_EQUAL(next->result_, 10);
+    init_sample(src, {20});
+    MutableSample ms1(&src);
+    eval.put(ms1);
+    BOOST_REQUIRE_EQUAL(next->result_, 15);
+    init_sample(src, {30});
+    MutableSample ms2(&src);
+    eval.put(ms2);
+    BOOST_REQUIRE_EQUAL(next->result_, 25);
+    init_sample(src, {40});
+    MutableSample ms3(&src);
+    eval.put(ms3);
+    BOOST_REQUIRE_EQUAL(next->result_, 35);
+    init_sample(src, {50});
+    MutableSample ms4(&src);
+    eval.put(ms4);
+    BOOST_REQUIRE_EQUAL(next->result_, 45);
+    init_sample(src, {60});
+    MutableSample ms5(&src);
+    eval.put(ms5);
+    BOOST_REQUIRE_EQUAL(next->result_, 55);
+}
+
 
 
