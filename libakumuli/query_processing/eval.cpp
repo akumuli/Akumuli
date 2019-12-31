@@ -163,15 +163,9 @@ template<class Base>
 typename FunctionCallNode<Base>::RegistryToken FunctionCallNode<Base>::regtoken_;
 
 struct BuiltInFunctions {
-    struct BuiltInFn {
-        bool apply(std::vector<std::unique_ptr<ExpressionNode>>&, std::string*) {
-            // Default implementation
-            return true;
-        }
-    };
 
     // Arithmetics
-    struct Sum : BuiltInFn {
+    struct Sum {
         double unit_;
 
         Sum() : unit_(0) {}
@@ -212,7 +206,7 @@ struct BuiltInFunctions {
         constexpr static const char* func_name = "+";
     };
 
-    struct Mul : BuiltInFn {
+    struct Mul {
         double unit_;
 
         Mul() : unit_(1.0) {}
@@ -254,7 +248,7 @@ struct BuiltInFunctions {
     };
 
     // General
-    struct Min : BuiltInFn {
+    struct Min {
         double baseline_;
 
         Min() : baseline_(std::numeric_limits<double>::max()) {}
@@ -296,7 +290,7 @@ struct BuiltInFunctions {
         constexpr static const char* func_name = "min";
     };
 
-    struct Max : BuiltInFn {
+    struct Max {
         double baseline_;
 
         Max() : baseline_(std::numeric_limits<double>::lowest()) {}
@@ -338,9 +332,17 @@ struct BuiltInFunctions {
         constexpr static const char* func_name = "max";
     };
 
-    struct Abs : BuiltInFn {
+    struct Abs {
+        bool folded_;
+        double abs_;
+
+        Abs() : folded_(false), abs_(0) {}
+
         template<class It>
         double call(It begin, It end) {
+            if (folded_) {
+                return abs_;
+            }
             return std::abs(*begin);
         }
         bool check_arity(size_t n, std::string* error) const {
@@ -351,13 +353,22 @@ struct BuiltInFunctions {
             return false;
         }
         bool apply(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {
-            return check_arity(children.size(), err);
+            if (!check_arity(children.size(), err)) {
+                return false;
+            }
+            double value;
+            std::tie(value, folded_) = children.front()->fold();
+            if (folded_) {
+                abs_ = std::abs(value);
+                children.clear();
+            }
+            return true;
         }
         constexpr static const char* func_name = "abs";
     };
 
     // Windowed functions
-    struct SMA : BuiltInFn {
+    struct SMA {
         int N;
         int pos;
         double sum;
