@@ -129,7 +129,7 @@ struct FunctionCallNode : ExpressionNode, Base
     std::tuple<double, bool> fold() override {
         if (args_.empty()) {
             // can do this since it's folded
-            double res = static_cast<Base*>(this)->call(args_.begin(), args_.end());
+            double res = static_cast<Base*>(this)->call(0, args_.begin(), args_.end());
             return std::make_tuple(res, true);
         }
         return std::make_tuple(0.0, false);
@@ -140,7 +140,7 @@ struct FunctionCallNode : ExpressionNode, Base
                        [&mut](std::unique_ptr<ExpressionNode>& node) {
                            return node->eval(mut);
                        });
-        return static_cast<Base*>(this)->call(args_.begin(), args_.end());
+        return static_cast<Base*>(this)->call(mut.get_timestamp(), args_.begin(), args_.end());
     }
 
     static std::unique_ptr<NodeT> create_node(std::vector<std::unique_ptr<ExpressionNode>>&& args) {
@@ -171,7 +171,7 @@ struct BuiltInFunctions {
         Sum() : unit_(0) {}
 
         template<class It>
-        double call(It begin, It end) {
+        double call(aku_Timestamp, It begin, It end) {
             auto res = std::accumulate(begin, end, unit_, [](double a, double b) {
                 return a + b;
             });
@@ -212,7 +212,7 @@ struct BuiltInFunctions {
         Mul() : unit_(1.0) {}
 
         template<class It>
-        double call(It begin, It end) {
+        double call(aku_Timestamp, It begin, It end) {
             auto res = std::accumulate(begin, end, unit_, [](double a, double b) {
                 return a * b;
             });
@@ -254,7 +254,7 @@ struct BuiltInFunctions {
         Min() : baseline_(std::numeric_limits<double>::max()) {}
 
         template<class It>
-        double call(It begin, It end) {
+        double call(aku_Timestamp, It begin, It end) {
             auto it = std::min_element(begin, end);
             if (it != end) {
                 return std::min(*it, baseline_);
@@ -296,7 +296,7 @@ struct BuiltInFunctions {
         Max() : baseline_(std::numeric_limits<double>::lowest()) {}
 
         template<class It>
-        double call(It begin, It end) {
+        double call(aku_Timestamp, It begin, It end) {
             auto it = std::max_element(begin, end);
             if (it != end) {
                 return std::max(*it, baseline_);
@@ -339,7 +339,7 @@ struct BuiltInFunctions {
         Abs() : folded_(false), abs_(0) {}
 
         template<class It>
-        double call(It begin, It end) {
+        double call(aku_Timestamp, It begin, It end) {
             if (folded_) {
                 return abs_;
             }
@@ -377,7 +377,7 @@ struct BuiltInFunctions {
         SMA() : N(0), pos(0), sum(0) {}
 
         template<class It>
-        double call(It begin, It end) {
+        double call(aku_Timestamp, It begin, It end) {
             assert(begin != end);
             sum -= queue_.at(pos % N);
             queue_.at(pos % N) = *begin;
@@ -412,6 +412,36 @@ struct BuiltInFunctions {
         }
         constexpr static const char* func_name = "sma";
     };
+
+    // Calc
+
+    struct Derivative {
+        // Prev
+        double xs_;
+        aku_Timestamp ts_;
+
+        Derivative() : xs_(0), ts_(0) {}
+
+        template<class It>
+        double call(aku_Timestamp ts, It begin, It end) {
+            // Formula: rate = Δx/Δt
+            const double nsec = 1000000000;
+            const double next = *begin;
+            double dX = (next - xs_) / (ts - ts_) * nsec;
+            return dX;
+        }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {
+            return check_arity(children.size(), err);
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n == 1) {
+                return true;
+            }
+            *error = "one argument expected";
+            return false;
+        }
+        constexpr static const char* func_name = "deriv1";
+    };
 };
 
 // Arithmetic
@@ -423,6 +453,8 @@ template struct FunctionCallNode<BuiltInFunctions::Min>;
 template struct FunctionCallNode<BuiltInFunctions::Abs>;
 // Window methods
 template struct FunctionCallNode<BuiltInFunctions::SMA>;
+// Calc
+template struct FunctionCallNode<BuiltInFunctions::Derivative>;
 
 typedef boost::property_tree::ptree PTree;
 static const int DEPTH_LIMIT = 10;

@@ -300,4 +300,43 @@ BOOST_AUTO_TEST_CASE(Test_eval_10_abs_fold) {
     BOOST_REQUIRE_EQUAL(next->result_, 10);
 }
 
+BOOST_AUTO_TEST_CASE(Test_eval_11_deriv) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["deriv1", "col0"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    const aku_Timestamp sec = 1000000000;
+    BigSample src;
+    init_sample(src, {10});
+    src.timestamp = sec;
+    MutableSample ms0(&src);
+    eval.put(ms0);
+    BOOST_REQUIRE_EQUAL(next->result_, 10);
+    init_sample(src, {20});
+    src.timestamp = sec*2;
+    MutableSample ms1(&src);
+    eval.put(ms1);
+    BOOST_REQUIRE_EQUAL(next->result_, 10);
+    init_sample(src, {30});
+    src.timestamp = sec*3;
+    MutableSample ms2(&src);
+    eval.put(ms2);
+    BOOST_REQUIRE_EQUAL(next->result_, 10);
+    init_sample(src, {40});
+    src.timestamp = sec*4;
+    MutableSample ms3(&src);
+    eval.put(ms3);
+    BOOST_REQUIRE_EQUAL(next->result_, 10);
+    init_sample(src, {50});
+    src.timestamp = sec*5;
+    MutableSample ms4(&src);
+    eval.put(ms4);
+    BOOST_REQUIRE_EQUAL(next->result_, 10);
+    init_sample(src, {60});
+    src.timestamp = sec*6;
+    MutableSample ms5(&src);
+    eval.put(ms5);
+    BOOST_REQUIRE_EQUAL(next->result_, 10);
+}
 
