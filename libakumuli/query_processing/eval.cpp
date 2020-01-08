@@ -128,8 +128,9 @@ struct FunctionCallNode : ExpressionNode, Base
 
     std::tuple<double, bool> fold() override {
         if (args_.empty()) {
-            // can do this since it's folded
-            double res = static_cast<Base*>(this)->call(0, args_.begin(), args_.end());
+            // Can do this since it's folded, stateful functions can't be called this way
+            // but they won't be folded. Constant folding can fully simplify only pure functions.
+            double res = static_cast<Base*>(this)->call(0, 0, args_.begin(), args_.end());
             return std::make_tuple(res, true);
         }
         return std::make_tuple(0.0, false);
@@ -140,7 +141,7 @@ struct FunctionCallNode : ExpressionNode, Base
                        [&mut](std::unique_ptr<ExpressionNode>& node) {
                            return node->eval(mut);
                        });
-        return static_cast<Base*>(this)->call(mut.get_timestamp(), args_.begin(), args_.end());
+        return static_cast<Base*>(this)->call(mut.get_paramid(), mut.get_timestamp(), args_.begin(), args_.end());
     }
 
     static std::unique_ptr<NodeT> create_node(std::vector<std::unique_ptr<ExpressionNode>>&& args) {
@@ -171,7 +172,7 @@ struct BuiltInFunctions {
         Sum() : unit_(0) {}
 
         template<class It>
-        double call(aku_Timestamp, It begin, It end) {
+        double call(aku_ParamId, aku_Timestamp, It begin, It end) {
             auto res = std::accumulate(begin, end, unit_, [](double a, double b) {
                 return a + b;
             });
@@ -212,7 +213,7 @@ struct BuiltInFunctions {
         Mul() : unit_(1.0) {}
 
         template<class It>
-        double call(aku_Timestamp, It begin, It end) {
+        double call(aku_ParamId, aku_Timestamp, It begin, It end) {
             auto res = std::accumulate(begin, end, unit_, [](double a, double b) {
                 return a * b;
             });
@@ -254,7 +255,7 @@ struct BuiltInFunctions {
         Min() : baseline_(std::numeric_limits<double>::max()) {}
 
         template<class It>
-        double call(aku_Timestamp, It begin, It end) {
+        double call(aku_ParamId, aku_Timestamp, It begin, It end) {
             auto it = std::min_element(begin, end);
             if (it != end) {
                 return std::min(*it, baseline_);
@@ -296,7 +297,7 @@ struct BuiltInFunctions {
         Max() : baseline_(std::numeric_limits<double>::lowest()) {}
 
         template<class It>
-        double call(aku_Timestamp, It begin, It end) {
+        double call(aku_ParamId, aku_Timestamp, It begin, It end) {
             auto it = std::max_element(begin, end);
             if (it != end) {
                 return std::max(*it, baseline_);
@@ -339,7 +340,7 @@ struct BuiltInFunctions {
         Abs() : folded_(false), abs_(0) {}
 
         template<class It>
-        double call(aku_Timestamp, It begin, It end) {
+        double call(aku_ParamId, aku_Timestamp, It begin, It end) {
             if (folded_) {
                 return abs_;
             }
@@ -369,22 +370,31 @@ struct BuiltInFunctions {
 
     // Windowed functions
     struct SMA {
-        int N;
-        int pos;
-        double sum;
-        std::vector<double> queue_;
 
-        SMA() : N(0), pos(0), sum(0) {}
+        int N;
+
+        struct State {
+            int pos;
+            double sum;
+            std::vector<double> queue;
+        };
+
+        std::unordered_map<aku_ParamId, State> table_;
 
         template<class It>
-        double call(aku_Timestamp, It begin, It end) {
+        double call(aku_ParamId id, aku_Timestamp, It begin, It end) {
             assert(begin != end);
-            sum -= queue_.at(pos % N);
-            queue_.at(pos % N) = *begin;
-            sum += *begin;
-            pos++;
-            return sum / std::min(pos, N);
+            auto& state = table_[id];
+            if (state.queue.size() != static_cast<size_t>(N)) {
+                state.queue.resize(N);
+            }
+            state.sum -= state.queue.at(state.pos % N);
+            state.queue.at(state.pos % N) = *begin;
+            state.sum += *begin;
+            state.pos++;
+            return state.sum / std::min(state.pos, N);
         }
+
         bool apply(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {
             if (!check_arity(children.size(), err)) {
                 return false;
@@ -399,7 +409,6 @@ struct BuiltInFunctions {
                 return false;
             }
             N = static_cast<int>(val);
-            queue_.resize(N);
             children.erase(children.begin());
             return true;
         }
@@ -417,17 +426,19 @@ struct BuiltInFunctions {
 
     struct Derivative {
         // Prev
-        double xs_;
-        aku_Timestamp ts_;
-
-        Derivative() : xs_(0), ts_(0) {}
+        struct State {
+            double xs_;
+            aku_Timestamp ts_;
+        };
+        std::unordered_map<aku_ParamId, State> table_;
 
         template<class It>
-        double call(aku_Timestamp ts, It begin, It end) {
+        double call(aku_ParamId id, aku_Timestamp ts, It begin, It end) {
+            auto& state = table_[id];
             // Formula: rate = Δx/Δt
             const double nsec = 1000000000;
             const double next = *begin;
-            double dX = (next - xs_) / (ts - ts_) * nsec;
+            double dX = (next - state.xs_) / (ts - state.ts_) * nsec;
             return dX;
         }
         bool apply(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {
