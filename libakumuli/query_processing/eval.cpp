@@ -540,10 +540,7 @@ static std::unordered_map<std::string, int> buildNameToIndexMapping(const QP::Re
 {
     std::unordered_map<std::string, int> result;
     const int ncol = static_cast<int>(req.select.columns.size());
-    const SeriesMatcherBase* matcher = req.select.matcher.get();
-    if (!matcher) {
-        matcher = req.select.global_matcher;
-    }
+    const SeriesMatcherBase* matcher = req.select.global_matcher;
     for(int ix = 0; ix < ncol; ix++) {
         if (req.select.columns[ix].ids.empty()) {
             continue;

@@ -1271,6 +1271,8 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query
                                                     const SeriesMatcher &matcher)
 {
     ReshapeRequest result = {};
+    result.select.global_matcher = &matcher;
+
     ErrorMsg error;
     aku_Status status;
     std::tie(status, error) = validate_query(ptree);
@@ -1336,9 +1338,6 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query
         if (result.group_by.transient_map.empty()) {
             return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
         }
-    }
-    else {
-        result.select.global_matcher = &matcher;
     }
 
     std::tie(status, result.select.filters, result.select.filter_rule, error) = parse_filter(ptree, {metric});
@@ -1431,9 +1430,6 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_event
             return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
         }
     }
-    else {
-        result.select.global_matcher = &matcher;
-    }
 
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
@@ -1474,6 +1470,7 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
         SeriesMatcher const& matcher)
 {
     ReshapeRequest result = {};
+    result.select.global_matcher = &matcher;
 
     ErrorMsg error;
     aku_Status status;
@@ -1578,9 +1575,6 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
             return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
         }
     }
-    else {
-        result.select.global_matcher = &matcher;
-    }
 
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
 }
@@ -1668,6 +1662,8 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
         SeriesMatcher const& matcher)
 {
     ReshapeRequest result = {};
+    result.select.global_matcher = &matcher;
+
     ErrorMsg error;
     aku_Status status;
     std::tie(status, error) = validate_query(ptree);
@@ -1819,6 +1815,8 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_join_query(
         SeriesMatcher const&                matcher)
 {
     ReshapeRequest result = {};
+    result.select.global_matcher = &matcher;
+
     ErrorMsg error;
     aku_Status status;
     std::tie(status, error) = validate_query(ptree);
