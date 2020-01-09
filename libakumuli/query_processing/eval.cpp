@@ -370,7 +370,6 @@ struct BuiltInFunctions {
 
     // Windowed functions
     struct SMA {
-
         int N;
 
         struct State {
@@ -468,7 +467,7 @@ template struct FunctionCallNode<BuiltInFunctions::SMA>;
 template struct FunctionCallNode<BuiltInFunctions::Derivative>;
 
 typedef boost::property_tree::ptree PTree;
-static const int DEPTH_LIMIT = 10;
+static const int DEPTH_LIMIT = 20;
 
 template<class LookupFn>
 std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node, const LookupFn& lookup) {
@@ -541,12 +540,16 @@ static std::unordered_map<std::string, int> buildNameToIndexMapping(const QP::Re
 {
     std::unordered_map<std::string, int> result;
     const int ncol = static_cast<int>(req.select.columns.size());
+    const SeriesMatcherBase* matcher = req.select.matcher.get();
+    if (!matcher) {
+        matcher = req.select.global_matcher;
+    }
     for(int ix = 0; ix < ncol; ix++) {
         if (req.select.columns[ix].ids.empty()) {
             continue;
         }
         auto idcol = req.select.columns[ix].ids.front();
-        auto rawstr = req.select.matcher->id2str(idcol);
+        auto rawstr = matcher->id2str(idcol);
         // copy metric name from the begining until the ' ' or ':'
         std::string sname(rawstr.first, rawstr.first + rawstr.second);
         auto it = std::find_if(sname.begin(), sname.end(), [](char c) {
@@ -620,6 +623,6 @@ int Eval::get_requirements() const {
     return TERMINAL;
 }
 
-static QueryParserToken<Eval> scale_token("eval");
+static QueryParserToken<Eval> eval_token("eval");
 
 }}  // namespace

@@ -1337,6 +1337,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_query
             return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
         }
     }
+    else {
+        result.select.global_matcher = &matcher;
+    }
 
     std::tie(status, result.select.filters, result.select.filter_rule, error) = parse_filter(ptree, {metric});
     if (status != AKU_SUCCESS) {
@@ -1427,6 +1430,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_select_event
         if (result.group_by.transient_map.empty()) {
             return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
         }
+    }
+    else {
+        result.select.global_matcher = &matcher;
     }
 
     if (status != AKU_SUCCESS) {
@@ -1571,6 +1577,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_aggregate_qu
         if (result.group_by.transient_map.empty()) {
             return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
         }
+    }
+    else {
+        result.select.global_matcher = &matcher;
     }
 
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());

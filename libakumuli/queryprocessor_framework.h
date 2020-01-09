@@ -137,7 +137,8 @@ struct Selection {
     std::string       event_body_regex;
 
     //! This matcher should be used by Join-statement
-    std::shared_ptr<PlainSeriesMatcher> matcher;
+    std::shared_ptr<PlainSeriesMatcher>  matcher;
+    const SeriesMatcherBase             *global_matcher;
 
     // NOTE: when using Join stmt, output will contain n-tuples (n is a number of columns used).
     // The samples will have ids from first column but textual representation should be different
