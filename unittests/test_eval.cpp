@@ -71,6 +71,7 @@ void init_request(ReshapeRequest *req) {
         req->select.columns.at(i).ids.push_back(ids[i]);
         req->select.matcher->_add(names[i], static_cast<i64>(ids[i]));
     }
+    req->select.global_matcher = req->select.matcher.get();
 }
 
 void init_sample(aku_Sample& src, std::initializer_list<double>&& list) {
@@ -340,3 +341,54 @@ BOOST_AUTO_TEST_CASE(Test_eval_11_deriv) {
     BOOST_REQUIRE_EQUAL(next->result_, 10);
 }
 
+BOOST_AUTO_TEST_CASE(Test_eval_12_sub) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["-", "col0", "col1", 2, 3])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {10, 1});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 4);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_12_negate) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["-", "col0"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {10});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, -10);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_12_sub_folded) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["-", 10, 1, 2, 3, 2])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {0});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 2);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_12_negate_folded) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["-", "11"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, -11);
+}

@@ -163,9 +163,13 @@ private:
 template<class Base>
 typename FunctionCallNode<Base>::RegistryToken FunctionCallNode<Base>::regtoken_;
 
-struct BuiltInFunctions {
+// Common namespace for all built-in functions and operators
+namespace Builtins {
 
     // Arithmetics
+
+    /** Sum all arguments: [+ 1 2 3 4] -> (1 + 2 + 3 + 4) -> 10
+      */
     struct Sum {
         double unit_;
 
@@ -180,7 +184,7 @@ struct BuiltInFunctions {
         }
         bool check_arity(size_t n, std::string* error) const {
             if (n == 0) {
-                *error = "function require at least one parameter";
+                *error = "operator + require at least one parameter";
                 return false;
             }
             return true;
@@ -206,6 +210,64 @@ struct BuiltInFunctions {
         }
         constexpr static const char* func_name = "+";
     };
+
+    /** Substitue elements from the first one: [- 10 1 2 3] -> (10 - (1 + 2 + 3)) = 4
+      * Negate element if only single argument provided: [- 10] -> -10
+      */
+    struct Sub {
+        double unit_;
+        bool   negate_;
+
+        Sub() : unit_(0) {}
+
+        template<class It>
+        double call(aku_ParamId, aku_Timestamp, It begin, It end) {
+            auto it = begin;
+            double res = unit_;
+            if (it != end) {
+                double first = *it;
+                res += (negate_ ? -1 : 1) * first;
+                it++;
+            }
+            res -= std::accumulate(it, end, 0.0, [](double a, double b) {
+                return a + b;
+            });
+            return res;
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n == 0) {
+                *error = "operator - require at least one parameter";
+                return false;
+            }
+            return true;
+        }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& args, std::string* err) {
+            if (!check_arity(args.size(), err)) {
+                return false;
+            }
+            negate_ = args.size() == 1;
+            double sum = 0.0;
+            bool tail = false;
+            auto it = std::remove_if(args.begin(), args.end(), [&sum, &tail](std::unique_ptr<ExpressionNode>& n) {
+                bool folded;
+                double value;
+                std::tie(value, folded) = n->fold();
+                if (folded) {
+                    sum += (tail ? -1 : 1) * value;
+                }
+                tail = true;
+                return folded;
+            });
+            unit_ = sum;
+            args.erase(it, args.end());
+            if (negate_) {
+                unit_ *= -1;
+            }
+            return true;
+        }
+        constexpr static const char* func_name = "-";
+    };
+
 
     struct Mul {
         double unit_;
@@ -452,19 +514,20 @@ struct BuiltInFunctions {
         }
         constexpr static const char* func_name = "deriv1";
     };
-};
+}
 
 // Arithmetic
-template struct FunctionCallNode<BuiltInFunctions::Sum>;
-template struct FunctionCallNode<BuiltInFunctions::Mul>;
+template struct FunctionCallNode<Builtins::Sum>;
+template struct FunctionCallNode<Builtins::Sub>;
+template struct FunctionCallNode<Builtins::Mul>;
 // General
-template struct FunctionCallNode<BuiltInFunctions::Max>;
-template struct FunctionCallNode<BuiltInFunctions::Min>;
-template struct FunctionCallNode<BuiltInFunctions::Abs>;
+template struct FunctionCallNode<Builtins::Max>;
+template struct FunctionCallNode<Builtins::Min>;
+template struct FunctionCallNode<Builtins::Abs>;
 // Window methods
-template struct FunctionCallNode<BuiltInFunctions::SMA>;
+template struct FunctionCallNode<Builtins::SMA>;
 // Calc
-template struct FunctionCallNode<BuiltInFunctions::Derivative>;
+template struct FunctionCallNode<Builtins::Derivative>;
 
 typedef boost::property_tree::ptree PTree;
 static const int DEPTH_LIMIT = 20;
@@ -605,7 +668,7 @@ void Eval::complete() {
 bool Eval::put(MutableSample &mut) {
     double val = expr_->eval(mut);
     mut.collapse();
-    if (std::isnormal(val)) {
+    if (!std::isnan(val)) {
         *mut[0] = val;
         return next_->put(mut);
     }
