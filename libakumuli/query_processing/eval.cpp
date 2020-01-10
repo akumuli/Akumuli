@@ -248,27 +248,33 @@ namespace Builtins {
             negate_ = args.size() == 1;
             double sum = 0.0;
             bool tail = false;
-            auto it = std::remove_if(args.begin(), args.end(), [&sum, &tail](std::unique_ptr<ExpressionNode>& n) {
+            auto it = std::remove_if(args.begin(), args.end(), [this, &sum, &tail](std::unique_ptr<ExpressionNode>& n) {
                 bool folded;
                 double value;
                 std::tie(value, folded) = n->fold();
                 if (folded) {
                     sum += (tail ? -1 : 1) * value;
+                    if (!tail) {
+                        // First element was copied to the unit_. We need to start
+                        // multiplying by -1 starting from the first 'call' argument.
+                        negate_ = true;
+                    }
                 }
                 tail = true;
                 return folded;
             });
             unit_ = sum;
-            args.erase(it, args.end());
-            if (negate_) {
+            if (args.size() == 1) {
                 unit_ *= -1;
             }
+            args.erase(it, args.end());
             return true;
         }
         constexpr static const char* func_name = "-";
     };
 
-
+    /** Multiply all elements [* 1 2 3] -> (1 * 2 * 3) -> 6
+      */
     struct Mul {
         double unit_;
 
@@ -308,6 +314,78 @@ namespace Builtins {
             return true;
         }
         constexpr static const char* func_name = "*";
+    };
+
+    /** Divide all elements [/ 9 3 2] -> (9 / 3 / 2) -> 1.5
+      * Invert single element [/ 2] -> 0.5
+      */
+    struct Div {
+        double unit_;
+        bool invert_;
+
+        Div() : unit_(1.0) {}
+
+        template<class It>
+        double call(aku_ParamId, aku_Timestamp, It begin, It end) {
+            auto it = begin;
+            double res = unit_;
+            if (it != end) {
+                double first = *it;
+                if (invert_) {
+                    res /= first;
+                }
+                else {
+                    res *= first;
+                }
+                it++;
+            }
+            res /= std::accumulate(it, end, 1.0, [](double a, double b) {
+                return a * b;
+            });
+            return res;
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n == 0) {
+                *error = "/ operator require at least one parameter";
+                return false;
+            }
+            return true;
+        }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& args, std::string* err) {
+            if (!check_arity(args.size(), err)) {
+                return false;
+            }
+            invert_ = args.size() == 1;
+            double mul = 1.0;
+            bool tail = false;
+            auto it = std::remove_if(args.begin(), args.end(), [this, &mul, &tail](std::unique_ptr<ExpressionNode>& n) {
+                bool folded;
+                double value;
+                std::tie(value, folded) = n->fold();
+                if (folded) {
+                    if (tail) {
+                        mul /= value;
+                    }
+                    else {
+                        mul *= value;
+                    }
+                    if (!tail) {
+                        // First element was copied to the unit_. We need to start
+                        // with the division instead of multiplication.
+                        invert_ = true;
+                    }
+                }
+                tail = true;
+                return folded;
+            });
+            unit_ = mul;
+            if (args.size() == 1) {
+                unit_ = 1.0 / unit_;
+            }
+            args.erase(it, args.end());
+            return true;
+        }
+        constexpr static const char* func_name = "/";
     };
 
     // General
@@ -520,6 +598,7 @@ namespace Builtins {
 template struct FunctionCallNode<Builtins::Sum>;
 template struct FunctionCallNode<Builtins::Sub>;
 template struct FunctionCallNode<Builtins::Mul>;
+template struct FunctionCallNode<Builtins::Div>;
 // General
 template struct FunctionCallNode<Builtins::Max>;
 template struct FunctionCallNode<Builtins::Min>;
