@@ -165,6 +165,24 @@ typename FunctionCallNode<Base>::RegistryToken FunctionCallNode<Base>::regtoken_
 
 // Common namespace for all built-in functions and operators
 namespace Builtins {
+    /*
+     * Arithmetic:
+     * +, -, *, /, modulo power
+     *
+     * Comparisons:
+     * equal, not equal, greater, greater or equal, less, less or equal
+     *
+     * Math:
+     * min, max, abs, sum, avg, stddev, stdvar, count, quantile, top/bottom (n largest/smallest values)
+     * ceil, floor, exp, log, count_unique_values, count_value_changes
+     *
+     * Sliding window:
+     * simple moving average
+     *
+     * Calc:
+     * derivative
+     *
+     */
 
     // Arithmetics
 
@@ -388,6 +406,103 @@ namespace Builtins {
         constexpr static const char* func_name = "/";
     };
 
+    template<class It, class Fn>
+    bool check_order(It begin, It end, const Fn& func) {
+        auto it = begin;
+        auto prev = begin;
+        it++;
+        while (it < end) {
+            if (!func(*prev, *it)) {
+                return false;
+            }
+            it++;
+            prev++;
+        }
+        return true;
+    }
+
+    // Comparisons
+    struct Equals {
+        enum class CState {
+            HAS_RESULT,
+            HAS_OPERAND,
+            EMPTY,
+        };
+
+        double const_;
+        CState has_const_;
+
+        Equals() : const_(0), has_const_(CState::EMPTY) {}
+
+        template<class It>
+        double call(aku_ParamId, aku_Timestamp, It begin, It end) {
+            switch(has_const_) {
+            case CState::HAS_RESULT:
+                return const_;
+            case CState::EMPTY:
+                return 1.0 * check_order(begin, end, [](double a, double b) {
+                    return a == b;
+                });
+            case CState::HAS_OPERAND:
+                return 1.0 * (check_order(begin, end, [](double a, double b) {
+                    return a == b;
+                }) && (const_ == *begin));
+            }
+            return 0;
+        }
+        bool check_arity(size_t n, std::string* error) const {
+            if (n < 2) {
+                *error = "operator == require at least two parameters";
+                return false;
+            }
+            return true;
+        }
+        bool apply(std::vector<std::unique_ptr<ExpressionNode>>& args, std::string* err) {
+            if (!check_arity(args.size(), err)) {
+                return false;
+            }
+            std::vector<double> constpart;
+            auto it = std::remove_if(args.begin(), args.end(), [&constpart](std::unique_ptr<ExpressionNode>& n) {
+                bool folded;
+                double value;
+                std::tie(value, folded) = n->fold();
+                if (folded) {
+                    constpart.push_back(value);
+                    return true;
+                }
+                return false;
+            });
+            bool eq = check_order(constpart.begin(), constpart.end(), [](double a, double b) { return a == b; });
+            if (!eq) {
+                // doesn't matter if args are consumed or not, some arguments are not equal
+                // and the whole expression will be always evaluated to 0
+                has_const_ = CState::HAS_RESULT;
+                const_ = 0.0;
+                args.clear();
+            }
+            else if (!constpart.empty()) {
+                // there're some folded args, depending of the number of folded args we can
+                // have expression evaluated on this stage (n == 0) or only partially evaluated
+                int n = static_cast<int>(args.size() - constpart.size());
+                if (n == 0) {  // args list fully consumed
+                    const_ = 1.0;
+                    has_const_ = CState::HAS_RESULT;
+                }
+                else {
+                    const_ = constpart.front();
+                    has_const_ = CState::HAS_OPERAND;
+                }
+                args.erase(it, args.end());
+            }
+            else {
+                // no args was folded
+                has_const_ = CState::EMPTY;
+            }
+            return true;
+        }
+        constexpr static const char* func_name = "==";
+    };
+
     // General
     struct Min {
         double baseline_;
@@ -599,6 +714,8 @@ template struct FunctionCallNode<Builtins::Sum>;
 template struct FunctionCallNode<Builtins::Sub>;
 template struct FunctionCallNode<Builtins::Mul>;
 template struct FunctionCallNode<Builtins::Div>;
+// Comparisons
+template struct FunctionCallNode<Builtins::Equals>;
 // General
 template struct FunctionCallNode<Builtins::Max>;
 template struct FunctionCallNode<Builtins::Min>;
