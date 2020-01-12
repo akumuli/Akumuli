@@ -6,26 +6,6 @@
 namespace Akumuli {
 namespace QP {
 
-
-class ParseError : public std::exception {
-    const std::string message_;
-
-public:
-    ParseError(const char* msg)
-        : message_(msg)
-    {
-    }
-
-    ParseError(std::string msg)
-        : message_(std::move(msg))
-    {
-    }
-
-    const char* what() const noexcept override {
-        return message_.c_str();
-    }
-};
-
 class ExpressionNode {
 public:
     virtual ~ExpressionNode() = default;
@@ -120,7 +100,7 @@ struct FunctionCallNode : ExpressionNode, Base
     {
         std::string errormsg;
         if (!static_cast<Base*>(this)->apply(children_, &errormsg)) {
-            ParseError err(std::string("function ") + Base::func_name + " error: " + errormsg);
+            QueryParserError err(std::string("function ") + Base::func_name + " error: " + errormsg);
             BOOST_THROW_EXCEPTION(err);
         }
         args_.resize(children_.size(), 0);
@@ -422,17 +402,19 @@ namespace Builtins {
     }
 
     // Comparisons
-    struct Equals {
+    template<class OrderingTrait>
+    struct IsOrdered {
         enum class CState {
             HAS_RESULT,
             HAS_OPERAND,
             EMPTY,
         };
 
+        OrderingTrait trait_;
         double const_;
         CState has_const_;
 
-        Equals() : const_(0), has_const_(CState::EMPTY) {}
+        IsOrdered() : const_(0), has_const_(CState::EMPTY) {}
 
         template<class It>
         double call(aku_ParamId, aku_Timestamp, It begin, It end) {
@@ -440,19 +422,15 @@ namespace Builtins {
             case CState::HAS_RESULT:
                 return const_;
             case CState::EMPTY:
-                return 1.0 * check_order(begin, end, [](double a, double b) {
-                    return a == b;
-                });
+                return 1.0 * check_order(begin, end, trait_);
             case CState::HAS_OPERAND:
-                return 1.0 * (check_order(begin, end, [](double a, double b) {
-                    return a == b;
-                }) && (const_ == *begin));
+                return 1.0 * (check_order(begin, end, trait_) && trait_(const_, *begin));
             }
             return 0;
         }
         bool check_arity(size_t n, std::string* error) const {
             if (n < 2) {
-                *error = "operator == require at least two parameters";
+                *error = OrderingTrait::error_msg;
                 return false;
             }
             return true;
@@ -460,6 +438,9 @@ namespace Builtins {
         bool apply(std::vector<std::unique_ptr<ExpressionNode>>& args, std::string* err) {
             if (!check_arity(args.size(), err)) {
                 return false;
+            }
+            if (OrderingTrait::disable_folding) {
+                return true;
             }
             std::vector<double> constpart;
             auto it = std::remove_if(args.begin(), args.end(), [&constpart](std::unique_ptr<ExpressionNode>& n) {
@@ -472,9 +453,9 @@ namespace Builtins {
                 }
                 return false;
             });
-            bool eq = check_order(constpart.begin(), constpart.end(), [](double a, double b) { return a == b; });
+            bool eq = check_order(constpart.begin(), constpart.end(), trait_);
             if (!eq) {
-                // doesn't matter if args are consumed or not, some arguments are not equal
+                // doesn't matter if args are consumed or not, some arguments are not ordered
                 // and the whole expression will be always evaluated to 0
                 has_const_ = CState::HAS_RESULT;
                 const_ = 0.0;
@@ -500,7 +481,49 @@ namespace Builtins {
             }
             return true;
         }
-        constexpr static const char* func_name = "==";
+        constexpr static const char* func_name = OrderingTrait::function_name;
+    };
+
+    struct EqualsTrait {
+        bool operator() (double a, double b) const { return a == b; }
+        constexpr static const char* function_name = "==";
+        constexpr static const char* error_msg = "operator == require at least two parameters";
+        constexpr static bool disable_folding = false;
+    };
+
+    struct NotEqualsTrait {
+        bool operator() (double a, double b) const { return a != b; }
+        constexpr static const char* function_name = "!=";
+        constexpr static const char* error_msg = "operator != require at least two parameters";
+        constexpr static bool disable_folding = false;
+    };
+
+    struct LessThanTrait {
+        bool operator() (double a, double b) const { return a < b; }
+        constexpr static const char* function_name = "<";
+        constexpr static const char* error_msg = "operator < require at least two parameters";
+        constexpr static bool disable_folding = true;
+    };
+
+    struct LessOrEqualTrait {
+        bool operator() (double a, double b) const { return a <= b; }
+        constexpr static const char* function_name = "<=";
+        constexpr static const char* error_msg = "operator <= require at least two parameters";
+        constexpr static bool disable_folding = true;
+    };
+
+    struct GreaterThanTrait {
+        bool operator() (double a, double b) const { return a > b; }
+        constexpr static const char* function_name = ">";
+        constexpr static const char* error_msg = "operator > require at least two parameters";
+        constexpr static bool disable_folding = true;
+    };
+
+    struct GreaterOrEqualTrait {
+        bool operator() (double a, double b) const { return a >= b; }
+        constexpr static const char* function_name = ">=";
+        constexpr static const char* error_msg = "operator >= require at least two parameters";
+        constexpr static bool disable_folding = true;
     };
 
     // General
@@ -715,7 +738,12 @@ template struct FunctionCallNode<Builtins::Sub>;
 template struct FunctionCallNode<Builtins::Mul>;
 template struct FunctionCallNode<Builtins::Div>;
 // Comparisons
-template struct FunctionCallNode<Builtins::Equals>;
+template struct FunctionCallNode<Builtins::IsOrdered<Builtins::EqualsTrait>>;
+template struct FunctionCallNode<Builtins::IsOrdered<Builtins::NotEqualsTrait>>;
+template struct FunctionCallNode<Builtins::IsOrdered<Builtins::LessThanTrait>>;
+template struct FunctionCallNode<Builtins::IsOrdered<Builtins::LessOrEqualTrait>>;
+template struct FunctionCallNode<Builtins::IsOrdered<Builtins::GreaterThanTrait>>;
+template struct FunctionCallNode<Builtins::IsOrdered<Builtins::GreaterOrEqualTrait>>;
 // General
 template struct FunctionCallNode<Builtins::Max>;
 template struct FunctionCallNode<Builtins::Min>;
@@ -731,7 +759,7 @@ static const int DEPTH_LIMIT = 20;
 template<class LookupFn>
 std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node, const LookupFn& lookup) {
     if (depth == DEPTH_LIMIT) {
-        ParseError err("expression depth limit exceded");
+        QueryParserError err("expression depth limit exceded");
         BOOST_THROW_EXCEPTION(err);
     }
     // Expect array of: [op, arg1, arg2, ...,argN]
@@ -744,7 +772,7 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node, const Lo
             // Parse operator
             if (!it->first.empty()) {
                 // Expect value here
-                ParseError err("operator or function expected");
+                QueryParserError err("operator or function expected");
                 BOOST_THROW_EXCEPTION(err);
             }
             else {
@@ -771,7 +799,7 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node, const Lo
                     auto ix = lookup(value);
                     if (ix < 0) {
                         // Field can't be found
-                        ParseError err("unknown field '" + value + "'");
+                        QueryParserError err("unknown field '" + value + "'");
                         BOOST_THROW_EXCEPTION(err);
                     }
                     node.reset(new ValueNode(ix));
@@ -783,7 +811,7 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node, const Lo
     std::unique_ptr<ExpressionNode> res;
     res = FunctionCallRegistry::get().create(op, std::move(args));
     if (!res) {
-        ParseError err("unknown operation '" + op + "'");
+        QueryParserError err("unknown operation '" + op + "'");
         BOOST_THROW_EXCEPTION(err);
     }
     return res;

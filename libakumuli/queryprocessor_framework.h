@@ -171,6 +171,8 @@ struct ReshapeRequest {
 struct QueryParserError : std::runtime_error {
     QueryParserError(const char* parser_message)
         : std::runtime_error(parser_message) {}
+    QueryParserError(std::string parser_message)
+        : std::runtime_error(std::move(parser_message)) {}
 };
 
 struct Node;

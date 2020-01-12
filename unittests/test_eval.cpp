@@ -588,4 +588,69 @@ BOOST_AUTO_TEST_CASE(Test_eval_14_part_eq_false2) {
     BOOST_REQUIRE_EQUAL(next->result_, 0);
 }
 
+BOOST_AUTO_TEST_CASE(Test_eval_15_not_equal) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["!=", "42", "col0"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {24});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_16_less) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["<", "24", "col0"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {42});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_17_less_or_equal) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["<=", 24, 42, "col0"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {42});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_18_greater) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"([">", "42", "col0"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {24});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 1);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_19_greater_or_equal) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"([">=", "42", "col0", 24])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {42});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 1);
+}
+
 
