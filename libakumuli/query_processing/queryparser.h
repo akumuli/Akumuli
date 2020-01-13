@@ -109,6 +109,15 @@ struct QueryParser {
     static std::tuple<aku_Status, ReshapeRequest, ErrorMsg> parse_group_aggregate_query(boost::property_tree::ptree const& ptree,
                                                                               SeriesMatcher const& matcher);
 
+    /**
+     * Parse group-aggregate-join query
+     * @param ptree is a json query
+     * @param matcher is a series matcher
+     * @return status and request object
+     */
+    static std::tuple<aku_Status, ReshapeRequest, ErrorMsg> parse_group_aggregate_join_query(boost::property_tree::ptree const& ptree,
+                                                                                             SeriesMatcher const& matcher);
+
     /** Parse stream processing pipeline.
       * @param ptree contains query
       * @returns vector of Nodes in proper order

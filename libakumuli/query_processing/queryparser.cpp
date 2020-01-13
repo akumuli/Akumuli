@@ -934,6 +934,7 @@ std::tuple<aku_Status, ErrorMsg> validate_query(boost::property_tree::ptree cons
         "aggregate",
         "join",
         "group-aggregate",
+        "group-aggregate-join",
         "select-events",
     };
     static const std::set<std::string> ALLOWED_STMTS = {
@@ -950,7 +951,9 @@ std::tuple<aku_Status, ErrorMsg> validate_query(boost::property_tree::ptree cons
         "range",
         "where",
         "group-aggregate",
+        "group-aggregate-join",
         "apply",
+        "eval",
         "filter",
         "select-events",
     };
@@ -1768,6 +1771,26 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
 
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
 
+}
+
+std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggregate_join_query(
+        boost::property_tree::ptree const& ptree,
+        SeriesMatcher const& matcher)
+{
+    ReshapeRequest result = {};
+    result.select.global_matcher = &matcher;
+
+    ErrorMsg error;
+    aku_Status status;
+    std::tie(status, error) = validate_query(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+
+    Logger::msg(AKU_LOG_INFO, "Parsing query:");
+    Logger::msg(AKU_LOG_INFO, to_json(ptree, true).c_str());
+
+    throw "Not implemented";
 }
 
 static std::tuple<aku_Status, ErrorMsg> init_matcher_in_join_query(
