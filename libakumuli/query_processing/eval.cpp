@@ -330,16 +330,25 @@ namespace Builtins {
             if (it != end) {
                 double first = *it;
                 if (invert_) {
-                    res /= first;
+                    if (first != 0) {
+                        res /= first;
+                    }
+                    else {
+                        return NAN;
+                    }
                 }
                 else {
                     res *= first;
                 }
                 it++;
             }
-            res /= std::accumulate(it, end, 1.0, [](double a, double b) {
+            auto mul = std::accumulate(it, end, 1.0, [](double a, double b) {
                 return a * b;
             });
+            if (mul == 0) {
+                return NAN;
+            }
+            res /= mul;
             return res;
         }
         bool check_arity(size_t n, std::string* error) const {
@@ -356,13 +365,18 @@ namespace Builtins {
             invert_ = args.size() == 1;
             double mul = 1.0;
             bool tail = false;
-            auto it = std::remove_if(args.begin(), args.end(), [this, &mul, &tail](std::unique_ptr<ExpressionNode>& n) {
+            auto it = std::remove_if(args.begin(), args.end(), [this, &mul, &tail, &args](std::unique_ptr<ExpressionNode>& n) {
                 bool folded;
                 double value;
                 std::tie(value, folded) = n->fold();
                 if (folded) {
                     if (tail) {
-                        mul /= value;
+                        if (value != 0) {
+                            mul /= value;
+                        }
+                        else {
+                            mul = NAN;
+                        }
                     }
                     else {
                         mul *= value;
@@ -378,7 +392,13 @@ namespace Builtins {
             });
             unit_ = mul;
             if (args.size() == 1) {
-                unit_ = 1.0 / unit_;
+                if (unit_ != 0) {
+                    unit_ = 1.0 / unit_;
+                }
+                else {
+                    unit_ = NAN;
+                    it = args.begin();
+                }
             }
             args.erase(it, args.end());
             return true;
@@ -712,10 +732,16 @@ namespace Builtins {
         template<class It>
         double call(aku_ParamId id, aku_Timestamp ts, It begin, It end) {
             auto& state = table_[id];
-            // Formula: rate = Δx/Δt
             const double nsec = 1000000000;
             const double next = *begin;
+            if (ts == state.ts_) {
+                state.xs_ = *begin;
+                return NAN;
+            }
+            // Formula: rate = Δx/Δt
             double dX = (next - state.xs_) / (ts - state.ts_) * nsec;
+            state.ts_ = ts;
+            state.xs_ = next;
             return dX;
         }
         bool apply(std::vector<std::unique_ptr<ExpressionNode>>& children, std::string* err) {

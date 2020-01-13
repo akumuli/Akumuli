@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.74
+--------------
+
+IMPROVEMENT
+
+* Add expression evaluation
+
 Version 0.8.73
 --------------
 

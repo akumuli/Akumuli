@@ -458,6 +458,20 @@ BOOST_AUTO_TEST_CASE(Test_eval_13_div_3) {
     BOOST_REQUIRE_EQUAL(next->result_, 4);
 }
 
+BOOST_AUTO_TEST_CASE(Test_eval_13_div_0) {
+    // division by zero handling
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["/", 24, 3, "col0"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {0});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE(std::isnan(next->result_));
+}
+
 BOOST_AUTO_TEST_CASE(Test_eval_13_div_inverted) {
     ReshapeRequest req;
     init_request(&req);
@@ -469,6 +483,20 @@ BOOST_AUTO_TEST_CASE(Test_eval_13_div_inverted) {
     MutableSample ms(&src);
     eval.put(ms);
     BOOST_REQUIRE_CLOSE_FRACTION(next->result_, 0.5, 0.000001);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_13_div_inverted_0) {
+    // division by zero handling
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["/", "col0"])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {0});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE(std::isnan(next->result_));
 }
 
 BOOST_AUTO_TEST_CASE(Test_eval_13_div_folded) {
@@ -484,6 +512,20 @@ BOOST_AUTO_TEST_CASE(Test_eval_13_div_folded) {
     BOOST_REQUIRE_EQUAL(next->result_, 4);
 }
 
+BOOST_AUTO_TEST_CASE(Test_eval_13_div_folded_0) {
+    // division by zero handling
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["/", 24, 0, 2])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE(std::isnan(next->result_));
+}
+
 BOOST_AUTO_TEST_CASE(Test_eval_13_div_inv_folded) {
     ReshapeRequest req;
     init_request(&req);
@@ -495,6 +537,20 @@ BOOST_AUTO_TEST_CASE(Test_eval_13_div_inv_folded) {
     MutableSample ms(&src);
     eval.put(ms);
     BOOST_REQUIRE_CLOSE_FRACTION(next->result_, 0.25, 0.000001);
+}
+
+BOOST_AUTO_TEST_CASE(Test_eval_13_div_inv_folded_0) {
+    // division by zero handling
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree(R"(["/", 0])");
+    auto next = std::make_shared<MockNode>();
+    Eval eval(ptree, req, next, true);
+    BigSample src;
+    init_sample(src, {});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE(std::isnan(next->result_));
 }
 
 BOOST_AUTO_TEST_CASE(Test_eval_14_eq_true) {
