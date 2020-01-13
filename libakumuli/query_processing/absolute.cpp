@@ -12,7 +12,7 @@ Absolute::Absolute(std::shared_ptr<Node> next)
 {
 }
 
-Absolute::Absolute(const boost::property_tree::ptree&, std::shared_ptr<Node> next)
+Absolute::Absolute(const boost::property_tree::ptree&, ReshapeRequest const&, std::shared_ptr<Node> next)
     : next_(next)
 {
 }

@@ -1406,7 +1406,7 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
             return;
         }
         std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes, error_msg) = QueryParser::parse_processing_topology(ptree, cur);
+        std::tie(status, nodes, error_msg) = QueryParser::parse_processing_topology(ptree, cur, req);
         if (status != AKU_SUCCESS) {
             cur->set_error(status, error_msg.data());
             return;
@@ -1423,7 +1423,7 @@ void Storage::query(StorageSession const* session, InternalCursor* cur, const ch
             return;
         }
         std::vector<std::shared_ptr<Node>> nodes;
-        std::tie(status, nodes, error_msg) = QueryParser::parse_processing_topology(ptree, cur);
+        std::tie(status, nodes, error_msg) = QueryParser::parse_processing_topology(ptree, cur, req);
         if (status != AKU_SUCCESS) {
             cur->set_error(status, error_msg.data());
             return;
@@ -1478,7 +1478,8 @@ void Storage::suggest(StorageSession const* session, InternalCursor* cur, const 
         return;
     }
     std::vector<std::shared_ptr<Node>> nodes;
-    std::tie(status, nodes, error_msg) = QueryParser::parse_processing_topology(ptree, cur);
+    ReshapeRequest req = {};
+    std::tie(status, nodes, error_msg) = QueryParser::parse_processing_topology(ptree, cur, req);
     if (status != AKU_SUCCESS) {
         cur->set_error(status, error_msg.data());
         return;
@@ -1509,7 +1510,8 @@ void Storage::search(StorageSession const* session, InternalCursor* cur, const c
         return;
     }
     std::vector<std::shared_ptr<Node>> nodes;
-    std::tie(status, nodes, error_msg) = QueryParser::parse_processing_topology(ptree, cur);
+    ReshapeRequest req = {};
+    std::tie(status, nodes, error_msg) = QueryParser::parse_processing_topology(ptree, cur, req);
     if (status != AKU_SUCCESS) {
         cur->set_error(status, error_msg.data());
         return;

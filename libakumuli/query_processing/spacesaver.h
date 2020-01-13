@@ -40,7 +40,7 @@ struct SpaceSaver : Node {
         assert(P <= 1.0);
     }
 
-    SpaceSaver(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+    SpaceSaver(boost::property_tree::ptree const& ptree, const ReshapeRequest&, std::shared_ptr<Node> next)
         : next_(next)
         , N(0)
     {

@@ -14,7 +14,7 @@ struct MathOperation : Node {
 
     MathOperation(bool ignore_missing, std::shared_ptr<Node> next);
 
-    MathOperation(const boost::property_tree::ptree&ptree, std::shared_ptr<Node> next);
+    MathOperation(const boost::property_tree::ptree& ptree, const ReshapeRequest&, std::shared_ptr<Node> next);
 
     virtual void complete();
 
@@ -33,7 +33,7 @@ MathOperation<Op>::MathOperation(bool ignore_missing, std::shared_ptr<Node> next
 }
 
 template<class Op>
-MathOperation<Op>::MathOperation(const boost::property_tree::ptree& ptree, std::shared_ptr<Node> next)
+MathOperation<Op>::MathOperation(const boost::property_tree::ptree& ptree, const ReshapeRequest &, std::shared_ptr<Node> next)
     : next_(next)
 {
     ignore_missing_ = ptree.get<bool>("ignore_missing");

@@ -15,7 +15,7 @@ struct Scale : Node {
 
     Scale(std::vector<double> weights, std::shared_ptr<Node> next);
 
-    Scale(const boost::property_tree::ptree&, std::shared_ptr<Node> next);
+    Scale(const boost::property_tree::ptree&, const ReshapeRequest&, std::shared_ptr<Node> next);
 
     virtual void complete();
 
