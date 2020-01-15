@@ -919,6 +919,8 @@ std::tuple<aku_Status, QueryKind, ErrorMsg> QueryParser::get_query_kind(boost::p
             return std::make_tuple(AKU_SUCCESS, QueryKind::JOIN, ErrorMsg());
         } else if (item.first == "group-aggregate") {
             return std::make_tuple(AKU_SUCCESS, QueryKind::GROUP_AGGREGATE, ErrorMsg());
+        } else if (item.first == "group-aggregate-join") {
+            return std::make_tuple(AKU_SUCCESS, QueryKind::GROUP_AGGREGATE_JOIN, ErrorMsg());
         } else if (item.first == "select-events") {
             return std::make_tuple(AKU_SUCCESS, QueryKind::SELECT_EVENTS, ErrorMsg());
         }
@@ -1774,6 +1776,46 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
 
 }
 
+static std::tuple<aku_Status, ErrorMsg> init_matcher_in_join_query(
+        ReshapeRequest*                 req,
+        SeriesMatcher const&            global_matcher,
+        std::vector<std::string> const& metric_names)
+{
+    if (req->select.columns.size() < 2) {
+        Logger::msg(AKU_LOG_ERROR, "Can't initialize matcher. Query is not a `JOIN` query.");
+        return std::make_tuple(AKU_EBAD_ARG, "Can't initialize matcher. Query is not a `JOIN` query.");
+    }
+    if (req->select.columns.size() != metric_names.size()) {
+        Logger::msg(AKU_LOG_ERROR, "Can't initialize matcher. Invalid metric names.");
+        return std::make_tuple(AKU_EBAD_ARG, "Can't initialize matcher. Invalid metric names.");
+    }
+    std::vector<aku_ParamId> ids = req->select.columns.at(0).ids;
+    auto matcher = std::make_shared<PlainSeriesMatcher>();
+    for (auto id: ids) {
+        auto sname = global_matcher.id2str(id);
+        std::string name(sname.first, sname.first + sname.second);
+        if (!boost::algorithm::starts_with(name, metric_names.front())) {
+            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid metric names.");
+            return std::make_tuple(AKU_EBAD_DATA, "Matcher initialization failed. Invalid metric names.");
+        }
+        auto tags = name.substr(metric_names.front().size());
+        std::stringstream str;
+        bool first = true;
+        for (auto metric: metric_names) {
+            if (first) {
+                first = false;
+            } else {
+                str << '|';
+            }
+            str << metric;
+        }
+        str << tags;
+        matcher->_add(str.str(), id);
+    }
+    req->select.matcher = matcher;
+    return std::make_tuple(AKU_SUCCESS, ErrorMsg());
+}
+
 std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggregate_join_query(boost::property_tree::ptree const& ptree,
                                                                                                SeriesMatcher const& matcher)
 {
@@ -1897,53 +1939,13 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
         }
     }
     else {
-        std::tie(status, error) = init_matcher_in_group_aggregate(&result, matcher, gagg.func);
+        std::tie(status, error) = init_matcher_in_join_query(&result, matcher, gagg.metric);
         if (status != AKU_SUCCESS) {
             return std::make_tuple(status, result, error);
         }
     }
 
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
-}
-
-static std::tuple<aku_Status, ErrorMsg> init_matcher_in_join_query(
-        ReshapeRequest*                 req,
-        SeriesMatcher const&            global_matcher,
-        std::vector<std::string> const& metric_names)
-{
-    if (req->select.columns.size() < 2) {
-        Logger::msg(AKU_LOG_ERROR, "Can't initialize matcher. Query is not a `JOIN` query.");
-        return std::make_tuple(AKU_EBAD_ARG, "Can't initialize matcher. Query is not a `JOIN` query.");
-    }
-    if (req->select.columns.size() != metric_names.size()) {
-        Logger::msg(AKU_LOG_ERROR, "Can't initialize matcher. Invalid metric names.");
-        return std::make_tuple(AKU_EBAD_ARG, "Can't initialize matcher. Invalid metric names.");
-    }
-    std::vector<aku_ParamId> ids = req->select.columns.at(0).ids;
-    auto matcher = std::make_shared<PlainSeriesMatcher>();
-    for (auto id: ids) {
-        auto sname = global_matcher.id2str(id);
-        std::string name(sname.first, sname.first + sname.second);
-        if (!boost::algorithm::starts_with(name, metric_names.front())) {
-            Logger::msg(AKU_LOG_ERROR, "Matcher initialization failed. Invalid metric names.");
-            return std::make_tuple(AKU_EBAD_DATA, "Matcher initialization failed. Invalid metric names.");
-        }
-        auto tags = name.substr(metric_names.front().size());
-        std::stringstream str;
-        bool first = true;
-        for (auto metric: metric_names) {
-            if (first) {
-                first = false;
-            } else {
-                str << '|';
-            }
-            str << metric;
-        }
-        str << tags;
-        matcher->_add(str.str(), id);
-    }
-    req->select.matcher = matcher;
-    return std::make_tuple(AKU_SUCCESS, ErrorMsg());
 }
 
 std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_join_query(

@@ -16,6 +16,7 @@ enum class QueryKind {
     JOIN,
     AGGREGATE,
     GROUP_AGGREGATE,
+    GROUP_AGGREGATE_JOIN,
     SELECT_EVENTS,
 };
 

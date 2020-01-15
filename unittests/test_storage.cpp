@@ -1756,3 +1756,83 @@ BOOST_AUTO_TEST_CASE(Test_high_cardinality_0) {
 BOOST_AUTO_TEST_CASE(Test_high_cardinality_1) {
     test_wal_write_amplification_impact(false, 10000, 1000, 1000, 1010);
 }
+
+BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
+    std::vector<std::string> series_names = {
+        "cpu.syst key=0 group=0",
+        "cpu.syst key=1 group=0",
+        "cpu.syst key=2 group=1",
+        "cpu.syst key=3 group=1",
+        "cpu.user key=0 group=0",
+        "cpu.user key=1 group=0",
+        "cpu.user key=2 group=1",
+        "cpu.user key=3 group=1",
+    };
+    std::vector<double> xss;
+    std::vector<aku_Timestamp> tss;
+    const aku_Timestamp BASE_TS = 100000, STEP_TS = 1000;
+    const double BASE_X = 1.0E3, STEP_X = 10.0;
+    for (int i = 0; i < 10000; i++) {
+        tss.push_back(BASE_TS + i*STEP_TS);
+        xss.push_back(BASE_X + i*STEP_X);
+    }
+    auto storage = create_storage();
+    auto session = storage->create_write_session();
+    fill_data(session, series_names, tss, xss);
+
+    {
+        // Construct group-aggregate query
+        const char* query = R"==(
+                {
+                    "group-aggregate-join": {
+                        "metric": ["cpu.user", "cpu.syst"],
+                        "step"  : 4000000,
+                        "func"  : "min"
+                    },
+                    "range": {
+                        "from"  : 100000,
+                        "to"    : 10100000
+                    }
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+
+        std::vector<std::tuple<std::string, aku_Timestamp, double, double>> expected = {
+            std::make_tuple("cpu.user|cpu.syst group=0 key=0",  100000,  1000,  1000),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=1",  100000,  1000,  1000),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=2",  100000,  1000,  1000),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=3",  100000,  1000,  1000),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=0", 4100000, 41000, 41000),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=1", 4100000, 41000, 41000),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=2", 4100000, 41000, 41000),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=3", 4100000, 41000, 41000),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=0", 8100000, 81000, 81000),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=1", 8100000, 81000, 81000),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=2", 8100000, 81000, 81000),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=3", 8100000, 81000, 81000),
+        };
+
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
+        BOOST_REQUIRE_EQUAL(cursor.tuples.size(), expected.size());
+
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            BOOST_REQUIRE((sample.payload.type & aku_PData::TUPLE_BIT) != 0);
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            u64 bits;
+            memcpy(&bits, &sample.payload.float64, sizeof(u64));
+            BOOST_REQUIRE((bits >> 58) == 1);
+            BOOST_REQUIRE((bits & 1) == 1);
+            BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
+            BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
+            BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), cursor.tuples[i][0]);
+            BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), cursor.tuples[i][1]);
+            i++;
+        }
+    }
+}

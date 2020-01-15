@@ -1204,7 +1204,13 @@ std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> QueryPlanBuilder::create(con
         return aggregate_query_plan(req);
     } else if (req.agg.enabled && req.agg.step != 0) {
         // Group aggregate query
-        return group_aggregate_query_plan(req);
+        if (req.select.columns.size() == 1) {
+            return group_aggregate_query_plan(req);
+        }
+        else {
+            // TODO: return group_aggregate_join_query_plan(req);
+            throw "not implemented";
+        }
     } else if (req.agg.enabled == false && req.select.columns.size() > 1) {
         // Join query
         return join_query_plan(req);
