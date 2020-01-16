@@ -216,15 +216,59 @@ struct AggregateProcessingStep : ProcessingPrelude {
 };
 
 
+// Convert AggregateOperator into RealValuedOperator
+class GroupAggregateConverter : public RealValuedOperator {
+    std::unique_ptr<AggregateOperator> op_;
+    AggregationFunction func_;
+public:
+
+    GroupAggregateConverter(AggregationFunction func, std::unique_ptr<AggregateOperator> op)
+        : op_(std::move(op))
+        , func_(func)
+    {
+    }
+
+    std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, double *destval, size_t size) override {
+        size_t pos = 0;
+        while (pos < size) {
+            aku_Status status;
+            size_t ressz;
+            aku_Timestamp ts;
+            AggregationResult xs;
+            std::tie(status, ressz) = op_->read(&ts, &xs, 1);
+            if (ressz == 1) {
+                destts[pos] = ts;
+                destval[pos] = TupleOutputUtils::get(xs, func_);
+                pos++;
+            }
+            else if (status == AKU_SUCCESS || status == AKU_ENO_DATA){
+                return std::make_tuple(status, pos);
+            }
+            else {
+                return std::make_tuple(status, 0);
+            }
+        }
+        return std::make_tuple(AKU_SUCCESS, pos);
+    }
+
+    Direction get_direction() {
+        return AggregateOperator::Direction::FORWARD == op_->get_direction()
+             ? RealValuedOperator::Direction::FORWARD
+             : RealValuedOperator::Direction::BACKWARD;
+    }
+};
+
+
 struct GroupAggregateProcessingStep : ProcessingPrelude {
     std::vector<std::unique_ptr<AggregateOperator>> agglist_;
     aku_Timestamp begin_;
     aku_Timestamp end_;
     aku_Timestamp step_;
     std::vector<aku_ParamId> ids_;
+    AggregationFunction fn_;
 
     template<class T>
-    GroupAggregateProcessingStep(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step, T&& t)
+    GroupAggregateProcessingStep(aku_Timestamp begin, aku_Timestamp end, aku_Timestamp step, T&& t, AggregationFunction fn=AggregationFunction::FIRST)
         : begin_(begin)
         , end_(end)
         , step_(step)
@@ -237,7 +281,17 @@ struct GroupAggregateProcessingStep : ProcessingPrelude {
     }
 
     virtual aku_Status extract_result(std::vector<std::unique_ptr<RealValuedOperator>>* dest) {
-        return AKU_ENO_DATA;
+        if (agglist_.empty()) {
+            return AKU_ENO_DATA;
+        }
+        dest->clear();
+        for (auto&& it: agglist_) {
+            std::unique_ptr<RealValuedOperator> op;
+            op.reset(new GroupAggregateConverter(fn_, std::move(it)));
+            dest->push_back(std::move(op));
+        }
+        agglist_.clear();
+        return AKU_SUCCESS;
     }
 
     virtual aku_Status extract_result(std::vector<std::unique_ptr<AggregateOperator>>* dest) {
@@ -1091,45 +1145,79 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> aggregate_query_plan(
 static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> join_query_plan(ReshapeRequest const& req) {
     std::unique_ptr<IQueryPlan> result;
 
-    // Group-by and aggregation is not supported currently
-    if (req.agg.enabled || req.group_by.enabled || req.select.columns.size() < 2) {
+    // Group-by is not supported currently
+    if (req.group_by.enabled || req.select.columns.size() < 2) {
         return std::make_tuple(AKU_EBAD_ARG, std::move(result));
     }
 
-    std::unique_ptr<ProcessingPrelude> t1stage;
-    std::vector<aku_ParamId> t1ids;
-    int cardinality = static_cast<int>(req.select.columns.size());
-    for (size_t i = 0; i < req.select.columns.at(0).ids.size(); i++) {
-        for (int c = 0; c < cardinality; c++) {
-            t1ids.push_back(req.select.columns.at(static_cast<size_t>(c)).ids.at(i));
+    if (req.agg.enabled == false) {
+
+        std::unique_ptr<ProcessingPrelude> t1stage;
+        std::vector<aku_ParamId> t1ids;
+        int cardinality = static_cast<int>(req.select.columns.size());
+        for (size_t i = 0; i < req.select.columns.at(0).ids.size(); i++) {
+            for (int c = 0; c < cardinality; c++) {
+                t1ids.push_back(req.select.columns.at(static_cast<size_t>(c)).ids.at(i));
+            }
         }
-    }
-    if (filtering_enabled(req.select.filters)) {
-        // Join query should have many filters (filter per metric)
-        aku_Status s;
-        std::vector<ValueFilter> flt;
-        std::tie(s, flt) = layout_filters(req);
-        if (s != AKU_SUCCESS) {
+        if (filtering_enabled(req.select.filters)) {
+            // Join query should have many filters (filter per metric)
+            aku_Status s;
+            std::vector<ValueFilter> flt;
+            std::tie(s, flt) = layout_filters(req);
+            if (s != AKU_SUCCESS) {
+                return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+            }
+            t1stage.reset(new FilterProcessingStep(req.select.begin,
+                                                   req.select.end,
+                                                   flt,
+                                                   std::move(t1ids)));
+        } else {
+            t1stage.reset(new ScanProcessingStep(req.select.begin, req.select.end, std::move(t1ids)));
+        }
+
+        std::unique_ptr<MaterializationStep> t2stage;
+
+        if (req.group_by.enabled) {
             return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        } else {
+            t2stage.reset(new Join(req.select.columns.at(0).ids, cardinality, req.order_by, req.select.begin, req.select.end));
         }
-        t1stage.reset(new FilterProcessingStep(req.select.begin,
-                                               req.select.end,
-                                               flt,
-                                               std::move(t1ids)));
-    } else {
-        t1stage.reset(new ScanProcessingStep(req.select.begin, req.select.end, std::move(t1ids)));
+
+        result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+        return std::make_tuple(AKU_SUCCESS, std::move(result));
     }
+    else {
+        std::unique_ptr<ProcessingPrelude> t1stage;
+        std::vector<aku_ParamId> t1ids;
+        int cardinality = static_cast<int>(req.select.columns.size());
+        for (size_t i = 0; i < req.select.columns.at(0).ids.size(); i++) {
+            for (int c = 0; c < cardinality; c++) {
+                t1ids.push_back(req.select.columns.at(static_cast<size_t>(c)).ids.at(i));
+            }
+        }
+        if (filtering_enabled(req.select.filters)) {
+            throw "not implemented";
+        } else {
+            t1stage.reset(new GroupAggregateProcessingStep(req.select.begin,
+                                                           req.select.end,
+                                                           req.agg.step,
+                                                           std::move(t1ids),
+                                                           req.agg.func.front()
+                                                           ));
+        }
 
-    std::unique_ptr<MaterializationStep> t2stage;
+        std::unique_ptr<MaterializationStep> t2stage;
 
-    if (req.group_by.enabled) {
-        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
-    } else {
-        t2stage.reset(new Join(req.select.columns.at(0).ids, cardinality, req.order_by, req.select.begin, req.select.end));
+        if (req.group_by.enabled) {
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        } else {
+            t2stage.reset(new Join(req.select.columns.at(0).ids, cardinality, req.order_by, req.select.begin, req.select.end));
+        }
+
+        result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
+        return std::make_tuple(AKU_SUCCESS, std::move(result));
     }
-
-    result.reset(new TwoStepQueryPlan(std::move(t1stage), std::move(t2stage)));
-    return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
 static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> group_aggregate_query_plan(ReshapeRequest const& req) {
@@ -1208,8 +1296,7 @@ std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> QueryPlanBuilder::create(con
             return group_aggregate_query_plan(req);
         }
         else {
-            // TODO: return group_aggregate_join_query_plan(req);
-            throw "not implemented";
+            return join_query_plan(req);
         }
     } else if (req.agg.enabled == false && req.select.columns.size() > 1) {
         // Join query

@@ -1787,7 +1787,7 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
                     "group-aggregate-join": {
                         "metric": ["cpu.user", "cpu.syst"],
                         "step"  : 4000000,
-                        "func"  : "min"
+                        "func"  : "max"
                     },
                     "range": {
                         "from"  : 100000,
@@ -1826,7 +1826,7 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
             std::string sname(buffer, buffer + len);
             u64 bits;
             memcpy(&bits, &sample.payload.float64, sizeof(u64));
-            BOOST_REQUIRE((bits >> 58) == 1);
+            BOOST_REQUIRE((bits >> 58) == 2);
             BOOST_REQUIRE((bits & 1) == 1);
             BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
             BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
