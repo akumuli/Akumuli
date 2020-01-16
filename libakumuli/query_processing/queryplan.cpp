@@ -273,6 +273,7 @@ struct GroupAggregateProcessingStep : ProcessingPrelude {
         , end_(end)
         , step_(step)
         , ids_(std::forward<T>(t))
+        , fn_(fn)
     {
     }
 

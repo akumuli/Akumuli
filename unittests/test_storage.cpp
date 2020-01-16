@@ -1787,7 +1787,7 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
                     "group-aggregate-join": {
                         "metric": ["cpu.user", "cpu.syst"],
                         "step"  : 4000000,
-                        "func"  : "max"
+                        "func"  : "min"
                     },
                     "range": {
                         "from"  : 100000,
