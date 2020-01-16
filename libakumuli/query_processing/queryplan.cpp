@@ -251,7 +251,7 @@ public:
         return std::make_tuple(AKU_SUCCESS, pos);
     }
 
-    Direction get_direction() {
+    Direction get_direction() override {
         return AggregateOperator::Direction::FORWARD == op_->get_direction()
              ? RealValuedOperator::Direction::FORWARD
              : RealValuedOperator::Direction::BACKWARD;
