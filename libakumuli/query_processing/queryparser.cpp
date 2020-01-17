@@ -792,7 +792,7 @@ static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule, ErrorM
     if (filter) {
         for (size_t ix = 0; ix < metrics.size(); ix++) {
             // Form 1 query
-            auto child = filter->get_child_optional(metrics[ix]);
+            auto child = filter->get_child_optional(boost::property_tree::ptree::path_type(metrics[ix], ':'));
             if (child) {
                 found_at_least_one = true;
                 nfound++;
@@ -1882,19 +1882,7 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
     }
 
     // Parse filter query
-    std::vector<std::string> funcnames;
-    for (auto fn: gagg.func) {
-        auto fnname = Aggregation::to_string(fn);
-        funcnames.push_back(fnname);
-    }
-    std::tie(status, result.select.filters, result.select.filter_rule, error) = parse_filter(ptree, funcnames);
-    // Functions are used instead of metrics because group-aggregate-join query can produce
-    // more than one output, for instance:
-    // `"group-aggregate-join": { "metric": "foo", "step": "1s", "func": ["min", "max"] }` query
-    // will produce tuples with two components - min and max. User may want to filter by
-    // first component or by the second. In this case the filter statement may look like this:
-    // `"filter": { "max": { "gt": 100 } }` or `"filter": { "min": { "gt": 100 } }` or
-    // combination of both.
+    std::tie(status, result.select.filters, result.select.filter_rule, error) = parse_filter(ptree, gagg.metric);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
