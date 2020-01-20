@@ -137,7 +137,8 @@ struct Selection {
     std::string       event_body_regex;
 
     //! This matcher should be used by Join-statement
-    std::shared_ptr<PlainSeriesMatcher> matcher;
+    std::shared_ptr<PlainSeriesMatcher>  matcher;
+    const SeriesMatcherBase             *global_matcher;
 
     // NOTE: when using Join stmt, output will contain n-tuples (n is a number of columns used).
     // The samples will have ids from first column but textual representation should be different
@@ -170,6 +171,8 @@ struct ReshapeRequest {
 struct QueryParserError : std::runtime_error {
     QueryParserError(const char* parser_message)
         : std::runtime_error(parser_message) {}
+    QueryParserError(std::string parser_message)
+        : std::runtime_error(std::move(parser_message)) {}
 };
 
 struct Node;
@@ -302,6 +305,7 @@ struct IStreamProcessor {
 
 struct BaseQueryParserToken {
     virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree,
+                                         const ReshapeRequest&              req,
                                          std::shared_ptr<Node>              next) const = 0;
     virtual std::string get_tag() const                                                 = 0;
 };
@@ -313,6 +317,7 @@ std::vector<std::string> list_query_registry();
 
 //! Create new node using token registry
 std::shared_ptr<Node> create_node(std::string tag, boost::property_tree::ptree const& ptree,
+                                  const ReshapeRequest &req,
                                   std::shared_ptr<Node> next);
 
 /** Register new query type
@@ -326,8 +331,9 @@ template <class Target> struct QueryParserToken : BaseQueryParserToken {
     }
     virtual std::string           get_tag() const { return tag; }
     virtual std::shared_ptr<Node> create(boost::property_tree::ptree const& ptree,
+                                         const ReshapeRequest&              req,
                                          std::shared_ptr<Node>              next) const {
-        return std::make_shared<Target>(ptree, next);
+        return std::make_shared<Target>(ptree, req, next);
     }
 };
 }

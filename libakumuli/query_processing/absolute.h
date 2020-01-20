@@ -15,7 +15,7 @@ struct Absolute : Node {
 
     Absolute(std::shared_ptr<Node> next);
 
-    Absolute(const boost::property_tree::ptree&, std::shared_ptr<Node> next);
+    Absolute(const boost::property_tree::ptree&, const ReshapeRequest &, std::shared_ptr<Node> next);
 
     virtual void complete();
 

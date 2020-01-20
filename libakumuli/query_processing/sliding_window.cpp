@@ -55,7 +55,7 @@ double EWMA::get(double default_value) const {
 // EWMAPrecition
 // -------------
 
-EWMAPrediction::EWMAPrediction(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+EWMAPrediction::EWMAPrediction(boost::property_tree::ptree const& ptree, const ReshapeRequest&, std::shared_ptr<Node> next)
     : next_(next)
     , delta_(false)
 {
@@ -112,7 +112,7 @@ int EWMAPrediction::get_requirements() const {
 }
 
 struct EWMAPredictionError : EWMAPrediction {
-    EWMAPredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+    EWMAPredictionError(boost::property_tree::ptree const& ptree, const ReshapeRequest, std::shared_ptr<Node> next)
         : EWMAPrediction(ptree.get<double>("decay"), true, next)
     {
     }
@@ -157,7 +157,7 @@ SMAPrediction::SMAPrediction(size_t window_width, bool calculate_delta, std::sha
 {
 }
 
-SMAPrediction::SMAPrediction(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+SMAPrediction::SMAPrediction(boost::property_tree::ptree const& ptree, const ReshapeRequest &, std::shared_ptr<Node> next)
     : delta_(false)
 {
     width_ = ptree.get<double>("window-width");
@@ -206,7 +206,7 @@ int SMAPrediction::get_requirements() const {
 
 
 struct SMAPredictionError : SMAPrediction {
-    SMAPredictionError(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+    SMAPredictionError(boost::property_tree::ptree const& ptree, const ReshapeRequest&, std::shared_ptr<Node> next)
         : SMAPrediction(ptree.get<size_t>("window-width"), true, next)
     {
     }
@@ -221,7 +221,7 @@ CMAPrediction::CMAPrediction(std::shared_ptr<Node> next)
 {
 }
 
-CMAPrediction::CMAPrediction(boost::property_tree::ptree const& ptree, std::shared_ptr<Node> next)
+CMAPrediction::CMAPrediction(boost::property_tree::ptree const& ptree, const ReshapeRequest &, std::shared_ptr<Node> next)
     : next_(next)
 {
 }

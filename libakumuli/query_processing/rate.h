@@ -18,7 +18,7 @@ struct SimpleRate : Node {
 
     SimpleRate(std::shared_ptr<Node> next);
 
-    SimpleRate(const boost::property_tree::ptree&, std::shared_ptr<Node> next);
+    SimpleRate(const boost::property_tree::ptree&, const ReshapeRequest, std::shared_ptr<Node> next);
 
     virtual void complete();
 
@@ -40,7 +40,7 @@ struct CumulativeSum : Node {
 
     CumulativeSum(std::shared_ptr<Node> next);
 
-    CumulativeSum(const boost::property_tree::ptree&, std::shared_ptr<Node> next);
+    CumulativeSum(const boost::property_tree::ptree&, const ReshapeRequest&, std::shared_ptr<Node> next);
 
     virtual void complete();
 

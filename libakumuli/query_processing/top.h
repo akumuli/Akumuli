@@ -26,7 +26,7 @@ struct TopN : Node {
 
     TopN(size_t N, std::shared_ptr<Node> next);
 
-    TopN(const boost::property_tree::ptree&, std::shared_ptr<Node> next);
+    TopN(const boost::property_tree::ptree&, const ReshapeRequest&, std::shared_ptr<Node> next);
 
     virtual void complete();
 

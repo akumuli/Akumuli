@@ -13,7 +13,7 @@ Scale::Scale(std::vector<double> weights, std::shared_ptr<Node> next)
 {
 }
 
-Scale::Scale(const boost::property_tree::ptree& ptree, std::shared_ptr<Node> next)
+Scale::Scale(const boost::property_tree::ptree& ptree, const ReshapeRequest&, std::shared_ptr<Node> next)
     : next_(next)
 {
     // Read weights from json
