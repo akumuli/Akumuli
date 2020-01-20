@@ -29,6 +29,7 @@ matrix:
       branches:
         only:
           - master
+          - /^v0.*$/
       env:
       - DISTRIBUTION=ubuntu/trusty
       - DEPLOY_PACKAGE=false
@@ -93,7 +94,10 @@ matrix:
       - docker pull ubuntu:16.04
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
-      if: branch = master
+      branches:
+        only:
+          - master
+          - /^v0.*$/
     # Container based 64-bit Bionic build
     - os: linux
       dist: trusty
@@ -109,7 +113,10 @@ matrix:
       - docker pull ubuntu:18.04
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:18.04 ./CI/runci.sh ubuntu-18.04
-      if: branch = master
+      branches:
+        only:
+          - master
+          - /^v0.*$/
     # Container based 64-bit Debian Stretch build
     - os: linux
       dist: trusty
@@ -125,7 +132,10 @@ matrix:
       - docker pull debian:stretch
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:stretch ./CI/runci.sh debian-stretch
-      if: branch = master
+      branches:
+        only:
+          - master
+          - /^v0.*$/
     # Container based 64-bit Debian Jessie build
     - os: linux
       dist: trusty
@@ -141,7 +151,10 @@ matrix:
       - docker pull debian:jessie
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:jessie ./CI/runci.sh debian-jessie
-      if: branch = master
+      branches:
+        only:
+          - master
+          - /^v0.*$/
     # Container based 64-bit CentOS 7 build
     - os: linux
       dist: trusty
@@ -157,7 +170,10 @@ matrix:
       - docker pull centos:centos7
       script:
       - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli centos:centos7 ./CI/runci.sh centos7
-      if: branch = master
+      branches:
+        only:
+          - master
+          - /^v0.*$/
 
 env:
   global:
@@ -185,7 +201,7 @@ deploy:
   token:
     secure: TNIqxlIMy4PUJIn65Yl7dyr1A+TVCMSCOUZOd/XlqlmjntFbxdBKY2M+bX5Cc+uOvNNxFU0m0/RpxYibeN8Juo3BTV0B8YJ4Hjr60F+Sag0UFvvDmxd4vzK+rm+XbYyyx0ukO2ETUxEqxaJaEi0CJPEvEiIeXyJAzIytoVNukkM=
   on:
-    branch: master
+    tags: true
     condition: $DEPLOY_PACKAGE = "true"
   skip_cleanup: true
 
