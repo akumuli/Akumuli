@@ -1847,11 +1847,19 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
     }
     if (gagg.func.empty()) {
         Logger::msg(AKU_LOG_ERROR, "Aggregation fuction is not set");
-        return std::make_tuple(status, result, "Aggregation fuction is not set");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Aggregation fuction is not set");
+    }
+    if (gagg.func.size() != 1) {
+        Logger::msg(AKU_LOG_ERROR, "Only one aggregaton fuction should be set");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Single aggregation fuction expected");
     }
     if (gagg.step == 0) {
         Logger::msg(AKU_LOG_ERROR, "Step can't be zero");
-        return std::make_tuple(status, result, "Step can't be zero");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Step can't be zero");
+    }
+    if (gagg.metric.size() <= 1) {
+        Logger::msg(AKU_LOG_ERROR, "Join query expects at least two metrics");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Join query expects at least two metrics");
     }
 
     // Group-by statement

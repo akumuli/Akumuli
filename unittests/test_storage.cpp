@@ -1840,7 +1840,7 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
     }
 
     {
-        // Group-aggregate-join query with signel column
+        // Group-aggregate-join query with filter statement
         const char* query = R"==(
                 {
                     "group-aggregate-join": {
@@ -1862,6 +1862,9 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
         BOOST_REQUIRE(cursor.done);
         BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
 
+        /* Only one column is filtered so we should see all data-points but some of them
+         * should have only second element set
+         */
         std::vector<std::tuple<std::string, aku_Timestamp, double, double, bool>> expected = {
             std::make_tuple("cpu.user|cpu.syst group=0 key=0",  100000,  1000,  100000, false),
             std::make_tuple("cpu.user|cpu.syst group=0 key=1",  100000,  1000,  100000, false),
@@ -1899,5 +1902,113 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
             BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), cursor.tuples[i][1]);
             i++;
         }
+    }
+
+    {
+        // Group-aggregate-join query with filter on two columns
+        const char* query = R"==(
+                {
+                    "group-aggregate-join": {
+                        "metric": ["cpu.user", "cpu.syst"],
+                        "step"  : 4000000,
+                        "func"  : "min"
+                    },
+                    "filter": {
+                        "cpu.user": { "gt": 3000,  "lt": 80000   },
+                        "cpu.syst": { "gt": 99999, "lt": 8100000 }
+                    },
+                    "range": {
+                        "from"  : 100000,
+                        "to"    : 10100000
+                    }
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_SUCCESS);
+
+        /* Here we should have datapoints that match both filters of one filter. Datapoints that doesn't
+         * match both filters shouldn't be here
+         */
+        std::vector<std::tuple<std::string, aku_Timestamp, double, double, bool, bool>> expected = {
+            std::make_tuple("cpu.user|cpu.syst group=0 key=0",  100000,  1000,  100000, false, true),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=1",  100000,  1000,  100000, false, true),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=2",  100000,  1000,  100000, false, true),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=3",  100000,  1000,  100000, false, true),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=0", 4100000, 41000, 4100000, true, true),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=1", 4100000, 41000, 4100000, true, true),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=2", 4100000, 41000, 4100000, true, true),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=3", 4100000, 41000, 4100000, true, true),
+        };
+
+        BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
+        BOOST_REQUIRE_EQUAL(cursor.tuples.size(), expected.size());
+
+        int i = 0;
+        for (const auto& sample: cursor.samples) {
+            BOOST_REQUIRE((sample.payload.type & aku_PData::TUPLE_BIT) != 0);
+            char buffer[100];
+            int len = session->get_series_name(sample.paramid, buffer, 100);
+            std::string sname(buffer, buffer + len);
+            u64 bits;
+            memcpy(&bits, &sample.payload.float64, sizeof(u64));
+            BOOST_REQUIRE((bits >> 58) == 2);
+            bool col1 = std::get<4>(expected.at(i));
+            bool col2 = std::get<5>(expected.at(i));
+            BOOST_REQUIRE(static_cast<bool>(bits & 1) == col1);
+            BOOST_REQUIRE(static_cast<bool>(bits & 2) == col2);
+            BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
+            BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
+            if (col1) {
+                BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), cursor.tuples[i][0]);
+            }
+            if (col2) {
+                BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), cursor.tuples[i][1]);
+            }
+            i++;
+        }
+    }
+
+    {
+        // Group-aggregate-join query with two aggregation functions (not supported)
+        const char* query = R"==(
+                {
+                    "group-aggregate-join": {
+                        "metric": ["cpu.user", "cpu.syst"],
+                        "step"  : 4000000,
+                        "func"  : [ "min", "max" ]
+                    },
+                    "range": {
+                        "from"  : 100000,
+                        "to"    : 10100000
+                    }
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_EQUERY_PARSING_ERROR);
+    }
+
+    {
+        // Group-aggregate-join query with single column
+        const char* query = R"==(
+                {
+                    "group-aggregate-join": {
+                        "metric": ["cpu.user"],
+                        "step"  : 4000000,
+                        "func"  : "min"
+                    },
+                    "range": {
+                        "from"  : 100000,
+                        "to"    : 10100000
+                    }
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_EQUERY_PARSING_ERROR);
     }
 }
