@@ -1896,9 +1896,6 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
             if (col1) {
                 BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), cursor.tuples[i][0]);
             }
-            else {
-                BOOST_REQUIRE(std::isnan(cursor.tuples[i][0]));
-            }
             BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), cursor.tuples[i][1]);
             i++;
         }
