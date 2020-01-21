@@ -1849,7 +1849,7 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
                         "func"  : "min"
                     },
                     "filter": {
-                        "cpu.user": { "gt": 40000 }
+                        "cpu.user": { "gt": 40000, "lt": 80000 }
                     },
                     "range": {
                         "from"  : 100000,
@@ -1871,10 +1871,10 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
             std::make_tuple("cpu.user|cpu.syst group=0 key=1", 4100000, 41000, 4100000, true),
             std::make_tuple("cpu.user|cpu.syst group=1 key=2", 4100000, 41000, 4100000, true),
             std::make_tuple("cpu.user|cpu.syst group=1 key=3", 4100000, 41000, 4100000, true),
-            std::make_tuple("cpu.user|cpu.syst group=0 key=0", 8100000, 81000, 8100000, true),
-            std::make_tuple("cpu.user|cpu.syst group=0 key=1", 8100000, 81000, 8100000, true),
-            std::make_tuple("cpu.user|cpu.syst group=1 key=2", 8100000, 81000, 8100000, true),
-            std::make_tuple("cpu.user|cpu.syst group=1 key=3", 8100000, 81000, 8100000, true),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=0", 8100000, 81000, 8100000, false),
+            std::make_tuple("cpu.user|cpu.syst group=0 key=1", 8100000, 81000, 8100000, false),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=2", 8100000, 81000, 8100000, false),
+            std::make_tuple("cpu.user|cpu.syst group=1 key=3", 8100000, 81000, 8100000, false),
         };
 
         BOOST_REQUIRE_EQUAL(cursor.samples.size(), expected.size());
@@ -1891,11 +1891,13 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
             BOOST_REQUIRE((bits >> 58) == 2);
             bool col1 = std::get<4>(expected.at(i));
             BOOST_REQUIRE((bits & 1) == col1);
-            BOOST_REQUIRE((bits & 2) == 1);
             BOOST_REQUIRE_EQUAL(std::get<0>(expected.at(i)), sname);
             BOOST_REQUIRE_EQUAL(std::get<1>(expected.at(i)), sample.timestamp);
             if (col1) {
                 BOOST_REQUIRE_EQUAL(std::get<2>(expected.at(i)), cursor.tuples[i][0]);
+            }
+            else {
+                BOOST_REQUIRE(std::isnan(cursor.tuples[i][0]));
             }
             BOOST_REQUIRE_EQUAL(std::get<3>(expected.at(i)), cursor.tuples[i][1]);
             i++;
