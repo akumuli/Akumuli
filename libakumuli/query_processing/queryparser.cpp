@@ -1862,18 +1862,19 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
         return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Join query expects at least two metrics");
     }
 
-    // Group-by statement
+    // Group-by statement is not supported
     GroupByOpType op;
     std::vector<std::string> tags;
     std::tie(status, tags, op, error) = parse_groupby(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
-    auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
-        std::vector<std::string> fnames;
-        groupbytag.reset(new GroupByTag(matcher, gagg.metric, fnames, tags, op));
+        Logger::msg(AKU_LOG_ERROR, "Group-by-tag/pivot-by-tag is not supported");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Group-by-tag/pivot-by-tag is not supported");
     }
+    // TODO: implement group-by
+    result.group_by.enabled = false;
 
     // Where statement
     std::vector<aku_ParamId> ids;
@@ -1923,22 +1924,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
         return std::make_tuple(status, result, error);
     }
 
-    if (groupbytag) {
-        result.group_by.enabled = true;
-        std::tie(status, error) = init_matcher_in_group_aggregate(&result, groupbytag, gagg.func);
-        if (status != AKU_SUCCESS) {
-            return std::make_tuple(status, result, error);
-        }
-        result.group_by.transient_map = groupbytag->get_mapping();
-        if (result.group_by.transient_map.empty()) {
-            return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
-        }
-    }
-    else {
-        std::tie(status, error) = init_matcher_in_join_query(&result, matcher, gagg.metric);
-        if (status != AKU_SUCCESS) {
-            return std::make_tuple(status, result, error);
-        }
+    std::tie(status, error) = init_matcher_in_join_query(&result, matcher, gagg.metric);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
     }
 
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
@@ -1986,6 +1974,17 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_join_query(
         return std::make_tuple(status, result, error);
     }
 
+    // Group-by statement is not supported
+    GroupByOpType op;
+    std::vector<std::string> tags;
+    std::tie(status, tags, op, error) = parse_groupby(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+    if (!tags.empty()) {
+        Logger::msg(AKU_LOG_ERROR, "Group-by-tag/pivot-by-tag is not supported");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Group-by-tag/pivot-by-tag is not supported");
+    }
     // TODO: implement group-by
     result.group_by.enabled = false;
 

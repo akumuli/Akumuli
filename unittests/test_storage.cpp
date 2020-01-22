@@ -1783,6 +1783,7 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
     fill_data(session, series_names1, tss, xss);
     std::transform(xss.begin(), xss.end(), xss.begin(), [](double x) { return x*100; });
     fill_data(session, series_names2, tss, xss);
+
     {
         // Simple group-aggregate-join query with two columns
         const char* query = R"==(
@@ -2011,4 +2012,27 @@ BOOST_AUTO_TEST_CASE(Test_group_aggregate_join_query_0) {
         BOOST_REQUIRE(cursor.done);
         BOOST_REQUIRE_EQUAL(cursor.error, AKU_EQUERY_PARSING_ERROR);
     }
+
+    {
+        // Group-aggregate-join query with two columns and pivot-by-tag
+        const char* query = R"==(
+                {
+                    "group-aggregate-join": {
+                        "metric": ["cpu.user", "cpu.syst"],
+                        "step"  : 4000000,
+                        "func"  : "min"
+                    },
+                    "pivot-by-tag": [ "group" ],
+                    "range": {
+                        "from"  : 100000,
+                        "to"    : 10100000
+                    }
+                })==";
+
+        CursorMock cursor;
+        session->query(&cursor, query);
+        BOOST_REQUIRE(cursor.done);
+        BOOST_REQUIRE_EQUAL(cursor.error, AKU_EQUERY_PARSING_ERROR);
+    }
+
 }
