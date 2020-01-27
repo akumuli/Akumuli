@@ -1214,7 +1214,7 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> join_query_plan(Resha
             // Scan query can only have one filter
             aku_Status s;
             std::vector<AggregateFilter> flt;
-            std::tie(s, flt) = layout_filters(req);
+            std::tie(s, flt) = layout_aggregate_filters(req);
             if (s != AKU_SUCCESS) {
                 return std::make_tuple(AKU_EBAD_ARG, std::move(result));
             }
