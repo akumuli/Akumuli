@@ -792,7 +792,7 @@ static std::tuple<aku_Status, std::vector<Filter>, FilterCombinationRule, ErrorM
     if (filter) {
         for (size_t ix = 0; ix < metrics.size(); ix++) {
             // Form 1 query
-            auto child = filter->get_child_optional(metrics[ix]);
+            auto child = filter->get_child_optional(boost::property_tree::ptree::path_type(metrics[ix], ':'));
             if (child) {
                 found_at_least_one = true;
                 nfound++;
@@ -1847,25 +1847,34 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
     }
     if (gagg.func.empty()) {
         Logger::msg(AKU_LOG_ERROR, "Aggregation fuction is not set");
-        return std::make_tuple(status, result, "Aggregation fuction is not set");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Aggregation fuction is not set");
+    }
+    if (gagg.func.size() != 1) {
+        Logger::msg(AKU_LOG_ERROR, "Only one aggregaton fuction should be set");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Single aggregation fuction expected");
     }
     if (gagg.step == 0) {
         Logger::msg(AKU_LOG_ERROR, "Step can't be zero");
-        return std::make_tuple(status, result, "Step can't be zero");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Step can't be zero");
+    }
+    if (gagg.metric.size() <= 1) {
+        Logger::msg(AKU_LOG_ERROR, "Join query expects at least two metrics");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Join query expects at least two metrics");
     }
 
-    // Group-by statement
+    // Group-by statement is not supported
     GroupByOpType op;
     std::vector<std::string> tags;
     std::tie(status, tags, op, error) = parse_groupby(ptree);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
-    auto groupbytag = std::shared_ptr<GroupByTag>();
     if (!tags.empty()) {
-        std::vector<std::string> fnames;
-        groupbytag.reset(new GroupByTag(matcher, gagg.metric, fnames, tags, op));
+        Logger::msg(AKU_LOG_ERROR, "Group-by-tag/pivot-by-tag is not supported");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Group-by-tag/pivot-by-tag is not supported");
     }
+    // TODO: implement group-by
+    result.group_by.enabled = false;
 
     // Where statement
     std::vector<aku_ParamId> ids;
@@ -1882,19 +1891,7 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
     }
 
     // Parse filter query
-    std::vector<std::string> funcnames;
-    for (auto fn: gagg.func) {
-        auto fnname = Aggregation::to_string(fn);
-        funcnames.push_back(fnname);
-    }
-    std::tie(status, result.select.filters, result.select.filter_rule, error) = parse_filter(ptree, funcnames);
-    // Functions are used instead of metrics because group-aggregate-join query can produce
-    // more than one output, for instance:
-    // `"group-aggregate-join": { "metric": "foo", "step": "1s", "func": ["min", "max"] }` query
-    // will produce tuples with two components - min and max. User may want to filter by
-    // first component or by the second. In this case the filter statement may look like this:
-    // `"filter": { "max": { "gt": 100 } }` or `"filter": { "min": { "gt": 100 } }` or
-    // combination of both.
+    std::tie(status, result.select.filters, result.select.filter_rule, error) = parse_filter(ptree, gagg.metric);
     if (status != AKU_SUCCESS) {
         return std::make_tuple(status, result, error);
     }
@@ -1927,22 +1924,9 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_group_aggreg
         return std::make_tuple(status, result, error);
     }
 
-    if (groupbytag) {
-        result.group_by.enabled = true;
-        std::tie(status, error) = init_matcher_in_group_aggregate(&result, groupbytag, gagg.func);
-        if (status != AKU_SUCCESS) {
-            return std::make_tuple(status, result, error);
-        }
-        result.group_by.transient_map = groupbytag->get_mapping();
-        if (result.group_by.transient_map.empty()) {
-            return std::make_tuple(AKU_ENO_DATA, result, "Group-by statement doesn't match any series");
-        }
-    }
-    else {
-        std::tie(status, error) = init_matcher_in_join_query(&result, matcher, gagg.metric);
-        if (status != AKU_SUCCESS) {
-            return std::make_tuple(status, result, error);
-        }
+    std::tie(status, error) = init_matcher_in_join_query(&result, matcher, gagg.metric);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
     }
 
     return std::make_tuple(AKU_SUCCESS, result, ErrorMsg());
@@ -1990,6 +1974,17 @@ std::tuple<aku_Status, ReshapeRequest, ErrorMsg> QueryParser::parse_join_query(
         return std::make_tuple(status, result, error);
     }
 
+    // Group-by statement is not supported
+    GroupByOpType op;
+    std::vector<std::string> tags;
+    std::tie(status, tags, op, error) = parse_groupby(ptree);
+    if (status != AKU_SUCCESS) {
+        return std::make_tuple(status, result, error);
+    }
+    if (!tags.empty()) {
+        Logger::msg(AKU_LOG_ERROR, "Group-by-tag/pivot-by-tag is not supported");
+        return std::make_tuple(AKU_EQUERY_PARSING_ERROR, result, "Group-by-tag/pivot-by-tag is not supported");
+    }
     // TODO: implement group-by
     result.group_by.enabled = false;
 
