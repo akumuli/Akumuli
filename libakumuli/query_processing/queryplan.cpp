@@ -862,6 +862,58 @@ static std::tuple<aku_Status, std::vector<ValueFilter>> convert_filters(const st
     return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
+static std::tuple<aku_Status, AggregateFilter> convert_aggregate_filter(const Filter& filter, AggregationFunction fun)
+{
+    AggregateFilter aggflt;
+    if (filter.enabled) {
+        ValueFilter flt;
+        if (filter.flags&Filter::GT) {
+            flt.greater_than(filter.gt);
+        } else if (filter.flags&Filter::GE) {
+            flt.greater_or_equal(filter.ge);
+        }
+        if (filter.flags&Filter::LT) {
+            flt.less_than(filter.lt);
+        } else if (filter.flags&Filter::LE) {
+            flt.less_or_equal(filter.le);
+        }
+        if (!flt.validate()) {
+            Logger::msg(AKU_LOG_ERROR, "Invalid filter");
+            return std::make_tuple(AKU_EBAD_ARG, aggflt);
+        }
+        switch(fun) {
+        case AggregationFunction::MIN:
+            aggflt.set_filter(AggregateFilter::MIN, flt);
+            break;
+        case AggregationFunction::MAX:
+            aggflt.set_filter(AggregateFilter::MAX, flt);
+            break;
+        case AggregationFunction::MEAN:
+            aggflt.set_filter(AggregateFilter::AVG, flt);
+            break;
+        case AggregationFunction::SUM:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'sum' can't be used with the filter");
+            return std::make_tuple(AKU_EBAD_ARG, aggflt);
+        case AggregationFunction::CNT:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'cnt' can't be used with the filter");
+            return std::make_tuple(AKU_EBAD_ARG, aggflt);
+        case AggregationFunction::MIN_TIMESTAMP:
+        case AggregationFunction::MAX_TIMESTAMP:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'MIN(MAX)_TIMESTAMP' can't be used with the filter");
+            return std::make_tuple(AKU_EBAD_ARG, aggflt);
+        case AggregationFunction::FIRST_TIMESTAMP:
+        case AggregationFunction::LAST_TIMESTAMP:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'FIRST(LAST)_TIMESTAMP' can't be used with the filter");
+            return std::make_tuple(AKU_EBAD_ARG, aggflt);
+        case AggregationFunction::FIRST:
+        case AggregationFunction::LAST:
+            Logger::msg(AKU_LOG_ERROR, "Aggregation function 'FIRST(LAST)' can't be used with the filter");
+            return std::make_tuple(AKU_EBAD_ARG, aggflt);
+        };
+    }
+    return std::make_tuple(AKU_SUCCESS, aggflt);
+}
+
 static std::tuple<aku_Status, std::vector<AggregateFilter>> convert_aggregate_filters(const std::vector<Filter>& fltlist,
                                                                                       const std::vector<AggregationFunction>& funclst)
 {
@@ -986,6 +1038,46 @@ static std::tuple<aku_Status, std::vector<AggregateFilter>> layout_aggregate_fil
             result.push_back(colfilter);
         }
     }
+    return std::make_tuple(AKU_SUCCESS, std::move(result));
+}
+
+static std::tuple<aku_Status, std::vector<AggregateFilter>> layout_aggregate_join_filters(const ReshapeRequest& req) {
+    std::vector<AggregateFilter> result;
+    AggregateFilter::Mode common_mode = req.select.filter_rule == FilterCombinationRule::ALL
+                                      ? AggregateFilter::Mode::ALL
+                                      : AggregateFilter::Mode::ANY;
+    aku_Status s;
+    if (req.agg.func.size() != 1) {
+        // TODO: support N:N downsampling
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+    std::vector<AggregateFilter> colfilters;
+    auto downsampling_fn = req.agg.func.front();
+    for (auto it: req.select.filters) {
+        AggregateFilter flt;
+        std::tie(s, flt) = convert_aggregate_filter(it, downsampling_fn);
+        if (s != AKU_SUCCESS) {
+            // Bad filter in query
+            return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+        }
+        flt.mode = common_mode;
+        colfilters.push_back(std::move(flt));
+    }
+
+    if (colfilters.empty() || colfilters.size() != req.select.columns.size()) {
+        // Bad filter in query
+        Logger::msg(AKU_LOG_ERROR, "Reshape request without filter supplied");
+        return std::make_tuple(AKU_EBAD_ARG, std::move(result));
+    }
+
+    // We should duplicate the filters to match the layout of queried data
+    for (size_t ixrow = 0; ixrow < req.select.columns.at(0).ids.size(); ixrow++) {
+        for (size_t ixcol = 0; ixcol < req.select.columns.size(); ixcol++) {
+            auto& colfilter = colfilters.at(ixcol);
+            result.push_back(colfilter);
+        }
+    }
+
     return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
@@ -1214,7 +1306,7 @@ static std::tuple<aku_Status, std::unique_ptr<IQueryPlan>> join_query_plan(Resha
             // Scan query can only have one filter
             aku_Status s;
             std::vector<AggregateFilter> flt;
-            std::tie(s, flt) = layout_aggregate_filters(req);
+            std::tie(s, flt) = layout_aggregate_join_filters(req);
             if (s != AKU_SUCCESS) {
                 return std::make_tuple(AKU_EBAD_ARG, std::move(result));
             }
