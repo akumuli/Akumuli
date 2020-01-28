@@ -2,7 +2,7 @@ sudo: required
 
 language: cpp
 
-dist: trusty
+dist: bionic
 
 group: edge
 
@@ -10,20 +10,20 @@ matrix:
   include:
     # VM-based 64-bit skylake build (GCC)
     - os: linux
-      dist: trusty
+      dist: bionic
       sudo: required
       compiler: gcc
       env:
-      - DISTRIBUTION=ubuntu/trusty
+      - DISTRIBUTION=ubuntu/bionic
       - DEPLOY_PACKAGE=true
       - DEPLOY_IMAGE=true
       - GENERIC_BUILD=false
       script:
-      - bash ./CI/runci.sh ubuntu-14.04
+      - bash ./CI/runci.sh ubuntu-18.04
       - source ./CI/prepare-docker-image.sh
     # VM-based 64-bit generic build (GCC)
     - os: linux
-      dist: trusty
+      dist: bionic
       sudo: required
       compiler: gcc
       branches:
@@ -31,12 +31,12 @@ matrix:
           - master
           - /^v0.*$/
       env:
-      - DISTRIBUTION=ubuntu/trusty
+      - DISTRIBUTION=ubuntu/bionic
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=true
       - GENERIC_BUILD=true
       script:
-      - bash ./CI/runci.sh ubuntu-14.04
+      - bash ./CI/runci.sh ubuntu-18.04
       - source ./CI/prepare-docker-image.sh
       if: branch = master
     # VM-based 64-bit OSX build (Clang)
@@ -51,17 +51,17 @@ matrix:
       - bash ./CI/runci.sh osx
     # VM-based 64-bit WAL check build (GCC)
     - os: linux
-      dist: trusty
+      dist: bionic
       sudo: required
       compiler: gcc
       env:
-      - DISTRIBUTION=ubuntu/trusty
+      - DISTRIBUTION=ubuntu/bionic
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       #- DEBUG_BUILD=true
       script:
-      - bash ./CI/runci.sh ubuntu-14.04-wal
+      - bash ./CI/runci.sh ubuntu-18.04-wal
     # Container based 32-bit Xenial build
     - os: linux
       dist: trusty
@@ -81,7 +81,7 @@ matrix:
       #- docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e FORCE_ARCH=i386 -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli i386/ubuntu:xenial ./CI/runci.sh ubuntu-16.04
     # Container based 64-bit Xenial build
     - os: linux
-      dist: trusty
+      dist: bionic
       sudo: required
       services:
       - docker
@@ -98,28 +98,9 @@ matrix:
         only:
           - master
           - /^v0.*$/
-    # Container based 64-bit Bionic build
-    - os: linux
-      dist: trusty
-      sudo: required
-      services:
-      - docker
-      env:
-      - DISTRIBUTION=ubuntu/bionic
-      - DEPLOY_PACKAGE=true
-      - DEPLOY_IMAGE=false
-      - GENERIC_BUILD=false
-      before_install:
-      - docker pull ubuntu:18.04
-      script:
-      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:18.04 ./CI/runci.sh ubuntu-18.04
-      branches:
-        only:
-          - master
-          - /^v0.*$/
     # Container based 64-bit Debian Stretch build
     - os: linux
-      dist: trusty
+      dist: bionic
       sudo: required
       services:
       - docker
@@ -138,7 +119,7 @@ matrix:
           - /^v0.*$/
     # Container based 64-bit Debian Jessie build
     - os: linux
-      dist: trusty
+      dist: bionic
       sudo: required
       services:
       - docker
@@ -157,7 +138,7 @@ matrix:
           - /^v0.*$/
     # Container based 64-bit CentOS 7 build
     - os: linux
-      dist: trusty
+      dist: bionic
       sudo: required
       services:
       - docker
