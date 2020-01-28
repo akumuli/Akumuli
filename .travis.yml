@@ -33,7 +33,7 @@ matrix:
       - GENERIC_BUILD=true
       script:
       - bash ./CI/runci.sh ubuntu-18.04
-      - sudo source ./CI/prepare-docker-image.sh
+      - source ./CI/prepare-docker-image.sh
       if: branch = master
     # VM-based 64-bit OSX build (Clang)
     - os: osx
