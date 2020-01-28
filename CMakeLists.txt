@@ -48,13 +48,13 @@ endif(APPLE)
 
 # Debug flags
 set(CMAKE_CXX_FLAGS_DEBUG
- "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address -std=c++11")
+ "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address -std=c++14")
 set(CMAKE_C_FLAGS_DEBUG
  "${CMAKE_C_FLAGS_DEBUG} -DDEBUG -Wall -Werror -ggdb -fsanitize=address -std=c99")
 
 # Generic release flags
 set(CMAKE_CXX_FLAGS_RELEASEGEN
- "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3 -std=c++11")
+ "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3 -std=c++14")
 set(CMAKE_C_FLAGS_RELEASEGEN
  "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -mtune=generic -O3 -std=c99")
 
@@ -62,14 +62,14 @@ set(CMAKE_C_FLAGS_RELEASEGEN
 if("${APP_ARCH}" STREQUAL "amd64")
     # Use this flags only on amd64
     set(CMAKE_CXX_FLAGS_RELEASE 
-     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++14")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
     message("amd64 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
 elseif("${APP_ARCH}" STREQUAL "i386")
     # Use this flags only on amd64
     set(CMAKE_CXX_FLAGS_RELEASE 
-     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++11")
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c++14")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -march=corei7-avx -O3 -std=c99")
     add_definitions(-DDISABLE_X64)
@@ -79,7 +79,7 @@ elseif("${APP_ARCH}" STREQUAL "i386")
 elseif("${APP_ARCH}" STREQUAL "arm64")
     # This work on arm
     set(CMAKE_CXX_FLAGS_RELEASE
-     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++14")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
     add_definitions(-DDISABLE_EMBEDDED_ASM)
@@ -87,7 +87,7 @@ elseif("${APP_ARCH}" STREQUAL "arm64")
 elseif("${APP_ARCH}" STREQUAL "arm")
     # This work on arm
     set(CMAKE_CXX_FLAGS_RELEASE
-     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++14")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
     add_definitions(-DDISABLE_EMBEDDED_ASM)
@@ -95,7 +95,7 @@ elseif("${APP_ARCH}" STREQUAL "arm")
 else()
     # This work on arm64
     set(CMAKE_CXX_FLAGS_RELEASE
-     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++14")
     set(CMAKE_C_FLAGS_RELEASE
      "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
     message("unknown CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
