@@ -26,10 +26,6 @@ matrix:
       dist: bionic
       sudo: required
       compiler: gcc
-      branches:
-        only:
-          - master
-          - /^v0.*$/
       env:
       - DISTRIBUTION=ubuntu/bionic
       - DEPLOY_PACKAGE=false
@@ -94,10 +90,7 @@ matrix:
       - sudo docker pull ubuntu:16.04
       script:
       - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
-      branches:
-        only:
-          - master
-          - /^v0.*$/
+      if: branch = master
     # Container based 64-bit Debian Stretch build
     - os: linux
       dist: bionic
@@ -113,10 +106,7 @@ matrix:
       - sudo docker pull debian:stretch
       script:
       - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:stretch ./CI/runci.sh debian-stretch
-      branches:
-        only:
-          - master
-          - /^v0.*$/
+      if: branch = master
     # Container based 64-bit Debian Jessie build
     - os: linux
       dist: bionic
@@ -132,10 +122,7 @@ matrix:
       - sudo docker pull debian:jessie
       script:
       - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:jessie ./CI/runci.sh debian-jessie
-      branches:
-        only:
-          - master
-          - /^v0.*$/
+      if: branch = master
     # Container based 64-bit CentOS 7 build
     - os: linux
       dist: bionic
@@ -151,11 +138,7 @@ matrix:
       - sudo docker pull centos:centos7
       script:
       - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli centos:centos7 ./CI/runci.sh centos7
-      branches:
-        only:
-          - master
-          - /^v0.*$/
-
+      if: branch = master
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
