@@ -44,7 +44,6 @@ add_library(akumuli SHARED
     query_processing/spacesaver.cpp
     query_processing/limiter.cpp
     query_processing/sliding_window.cpp
-    query_processing/queryparser.cpp
 )
 
 add_library(lz4 STATIC

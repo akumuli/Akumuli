@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "Running tests for Ubuntu Xenial"
+echo "Running tests for Ubuntu Trusty"
 echo "Work dir: $(pwd)"
 
 echo "Running unit-tests"
@@ -19,7 +19,8 @@ fi
 
 echo "Set up disk constrained environment"
 akumulid/akumulid --init --disable-wal
-python functests/akumulid_test_tools.py set_log_path /opt/akumuli/akumuli.log
+
+python functests/akumulid_test_tools.py set_log_path $TRAVIS_BUILD_DIR/akumuli.log
 
 echo "Running base integration tests"
 python functests/test_data_ingestion.py akumulid/ TCP
@@ -45,6 +46,21 @@ fi
 
 echo "Running advanced integration tests"
 python functests/test_query_language.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
+python functests/test_group_aggregate.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
+python functests/test_group_aggregate_join.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
+python functests/test_search_api.py akumulid/
 if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
     exit 1
@@ -89,6 +105,11 @@ if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
     exit 1
 fi
+python functests/test_no_wal_recovery.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
 python functests/test_events.py akumulid/
 if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
@@ -126,6 +147,11 @@ if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
     exit 1
 fi
+python functests/test_group_aggregate.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
 python functests/test_volume_overflow.py akumulid/
 if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
@@ -152,6 +178,11 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 python functests/test_filter_query.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
+python functests/test_no_wal_recovery.py akumulid/
 if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
     exit 1
