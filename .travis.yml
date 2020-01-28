@@ -37,7 +37,7 @@ matrix:
       - GENERIC_BUILD=true
       script:
       - bash ./CI/runci.sh ubuntu-18.04
-      - source ./CI/prepare-docker-image.sh
+      - sudo source ./CI/prepare-docker-image.sh
       if: branch = master
     # VM-based 64-bit OSX build (Clang)
     - os: osx
@@ -91,9 +91,9 @@ matrix:
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       before_install:
-      - docker pull ubuntu:16.04
+      - sudo docker pull ubuntu:16.04
       script:
-      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
+      - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
       branches:
         only:
           - master
@@ -110,9 +110,9 @@ matrix:
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       before_install:
-      - docker pull debian:stretch
+      - sudo docker pull debian:stretch
       script:
-      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:stretch ./CI/runci.sh debian-stretch
+      - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:stretch ./CI/runci.sh debian-stretch
       branches:
         only:
           - master
@@ -129,9 +129,9 @@ matrix:
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       before_install:
-      - docker pull debian:jessie
+      - sudo docker pull debian:jessie
       script:
-      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:jessie ./CI/runci.sh debian-jessie
+      - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:jessie ./CI/runci.sh debian-jessie
       branches:
         only:
           - master
@@ -148,9 +148,9 @@ matrix:
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
       before_install:
-      - docker pull centos:centos7
+      - sudo docker pull centos:centos7
       script:
-      - docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli centos:centos7 ./CI/runci.sh centos7
+      - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli centos:centos7 ./CI/runci.sh centos7
       branches:
         only:
           - master
@@ -190,8 +190,8 @@ after_success:
 # Push docker image. Docker image should be created and the variables REPO,
 # VERSION, and TAG should exist.
 - if [[ $TRAVIS_PULL_REQUEST == "false" && $DEPLOY_IMAGE == "true" ]]; then
-      docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
-      docker push $REPO:$VERSION-$TAG;
+      sudo docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
+      sudo docker push $REPO:$VERSION-$TAG;
   fi 
 after_failure: 
 - echo "Build failed"
