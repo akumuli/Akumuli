@@ -1,9 +1,6 @@
 #!/bin/sh
 
 echo "Building for Centos/Fedora/RHEL"
-yum install -y centos-release-scl
-yum install -y devtoolset-7
-scl enable devtoolset-7 bash
 yum install -y epel-release
 yum update  -y
 yum install -y rpm-build
@@ -14,3 +11,8 @@ yum install -y jemalloc jemalloc-devel
 yum install -y sqlite sqlite-devel
 yum install -y libmicrohttpd libmicrohttpd-devel
 yum install -y cmake
+yum install -y centos-release-scl
+yum install -y devtoolset-7
+echo "Enable devtoolset-7"
+scl enable devtoolset-7 bash
+echo "Finished"
