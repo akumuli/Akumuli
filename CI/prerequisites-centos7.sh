@@ -14,5 +14,5 @@ yum install -y cmake
 yum install -y centos-release-scl
 yum install -y devtoolset-7
 echo "Enable devtoolset-7"
-scl enable devtoolset-7 bash
+source scl_source enable devtoolset-7
 echo "Finished"
