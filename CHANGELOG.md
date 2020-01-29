@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.75
+--------------
+
+IMPROVEMENT
+
+* Add group-aggregate-join query
+
 Version 0.8.74
 --------------
 

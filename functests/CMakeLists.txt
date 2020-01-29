@@ -17,6 +17,7 @@ file(COPY
     test_data_ingestion_bulk.py
     test_query_language.py
     test_group_aggregate.py
+    test_group_aggregate_join.py
     test_continuous_queries.py
     test_volume_overflow.py
     test_database_overflow.py

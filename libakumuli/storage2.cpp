@@ -1362,6 +1362,12 @@ std::tuple<aku_Status, std::string>
             return std::make_tuple(status, error_msg.data());
         }
         break;
+    case QueryKind::GROUP_AGGREGATE_JOIN:
+        std::tie(status, *req, error_msg) = QueryParser::parse_group_aggregate_join_query(ptree, global_matcher_);
+        if (status != AKU_SUCCESS) {
+            return std::make_tuple(status, error_msg.data());
+        }
+        break;
     case QueryKind::SELECT:
         std::tie(status, *req, error_msg) = QueryParser::parse_select_query(ptree, global_matcher_);
         if (status != AKU_SUCCESS) {
