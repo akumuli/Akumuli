@@ -1,9 +1,12 @@
 #!/bin/sh
 
 echo "Building for Centos/Fedora/RHEL"
-yum -y install epel-release
-yum update -y
-yum install -y gcc gcc-c++ make
+yum install -y centos-release-scl
+yum install -y devtoolset-8
+yum install -y devtoolset-8-toolchain
+scl enable devtoolset-8 bash
+yum install -y epel-release
+yum update  -y
 yum install -y rpm-build
 yum install -y boost-devel
 yum install -y apr-devel apr-util-devel apr-util-sqlite
