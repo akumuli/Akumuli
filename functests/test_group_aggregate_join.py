@@ -23,7 +23,6 @@ HTTPPORT = 8181
 @api_test("group aggregate join forward")
 def test_group_aggregate_join_forward(dtstart, delta, N, step, agg_func):
     """Aggregate all data and check result"""
-    nseries = 10
     begin = dtstart
     end = dtstart + delta*(N + 1)
     metrics = [ "cpu.user", "cpu.system", "cpu.idle" ]
@@ -35,6 +34,7 @@ def test_group_aggregate_join_forward(dtstart, delta, N, step, agg_func):
     queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
     response = urlopen(queryurl, json.dumps(query))
     iterations = 0
+    exptimestamp = begin
     for line in response:
         try:
             columns = line.split(',')
@@ -48,11 +48,10 @@ def test_group_aggregate_join_forward(dtstart, delta, N, step, agg_func):
                 raise ValueError("Unexpected series name {0}".format(columns[0]))
 
             timestamp = att.parse_timestamp(columns[1].strip())
-            tserrormsg = "Unexpected timestamp value: {0}".format(columns[1].strip())
-            if timestamp.second != dtstart.second:
+            if timestamp != exptimestamp:
+                tserrormsg = "Actual timestamp value: {0}\nExpected timestamp value {1}".format(columns[1].strip(), exptimestamp)
                 raise ValueError(tserrormsg)
-            if timestamp.microsecond != dtstart.microsecond:
-                raise ValueError(tserrormsg)
+            exptimestamp += delta
 
             # Check that all three values are the same
             user, syst, idle = tuple([float(it) for it in columns[2:]])
@@ -100,7 +99,8 @@ def main(path):
 
 
         # Run tests
-        test_group_aggregate_join_forward(dt, delta, nmsgs, '1m', 'min')
+        test_group_aggregate_join_forward(dt, datetime.timedelta(minutes=1), 1440, '1m', 'min')
+        test_group_aggregate_join_forward(dt, datetime.timedelta(minutes=10), 1440, '10m', 'min')
     finally:
         print("Stopping server...")
         akumulid.stop()
