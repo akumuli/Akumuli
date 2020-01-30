@@ -34,7 +34,7 @@ matrix:
       script:
       - bash ./CI/runci.sh ubuntu-18.04
       - source ./CI/prepare-docker-image.sh
-      if: branch = master
+      if: branch = master OR tag IS present
     # VM-based 64-bit OSX build (Clang)
     - os: osx
       osx_image: xcode9.2
@@ -90,7 +90,7 @@ matrix:
       - sudo docker pull ubuntu:16.04
       script:
       - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli ubuntu:16.04 ./CI/runci.sh ubuntu-16.04
-      if: branch = master
+      if: branch = master OR tag IS present
     # Container based 64-bit Debian Stretch build
     - os: linux
       dist: bionic
@@ -106,7 +106,7 @@ matrix:
       - sudo docker pull debian:stretch
       script:
       - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:stretch ./CI/runci.sh debian-stretch
-      if: branch = master
+      if: branch = master OR tag IS present
     # Container based 64-bit Debian Jessie build
     - os: linux
       dist: bionic
@@ -122,7 +122,7 @@ matrix:
       - sudo docker pull debian:jessie
       script:
       - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli debian:jessie ./CI/runci.sh debian-jessie
-      if: branch = master
+      if: branch = master OR tag IS present
     # Container based 64-bit CentOS 7 build
     - os: linux
       dist: bionic
@@ -138,7 +138,7 @@ matrix:
       - sudo docker pull centos:centos7
       script:
       - sudo docker run --log-driver=none -a stdin -a stdout -a stderr --rm -ti -u root -e GENERIC_BUILD='false' -v "${TRAVIS_BUILD_DIR}":/opt/akumuli -w /opt/akumuli centos:centos7 ./CI/runci.sh centos7
-      if: branch = master
+      if: branch = master OR tag IS present
 env:
   global:
   - secure: DHaTv1euwlpVgePMbw0LEBihzru8VP5RmY7/TUdEpS1dBlJx6nyT6lgmyRcdb19RmTBUXZl1hm7Zu8TfqJJgfty4o9EnpLfTHbY7JwglSqbOo7b/FNAa1Qi0RhVDwc/WvFJDYBUvOtPtVQbPtVtECXm8PZcRqfOuEjkbHmmnIk8=
@@ -173,6 +173,7 @@ after_success:
 # Push docker image. Docker image should be created and the variables REPO,
 # VERSION, and TAG should exist.
 - if [[ $TRAVIS_PULL_REQUEST == "false" && $DEPLOY_IMAGE == "true" ]]; then
+      echo "Pushing to $REPO $VERSION $TAG"
       sudo docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
       sudo docker push $REPO:$VERSION-$TAG;
   fi 
