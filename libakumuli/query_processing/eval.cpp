@@ -3,8 +3,139 @@
 #include <unordered_map>
 #include <functional>
 
+#include "exprtk.hpp"
+
 namespace Akumuli {
 namespace QP {
+
+static std::unordered_map<std::string, int> buildNameToIndexMapping(const QP::ReshapeRequest& req)
+{
+    std::unordered_map<std::string, int> result;
+    const int ncol = static_cast<int>(req.select.columns.size());
+    const SeriesMatcherBase* matcher = req.select.global_matcher;
+    for(int ix = 0; ix < ncol; ix++) {
+        if (req.select.columns[ix].ids.empty()) {
+            continue;
+        }
+        auto idcol = req.select.columns[ix].ids.front();
+        auto rawstr = matcher->id2str(idcol);
+        // copy metric name from the begining until the ' ' or ':'
+        std::string sname(rawstr.first, rawstr.first + rawstr.second);
+        auto it = std::find_if(sname.begin(), sname.end(), [](char c) {
+            return std::isspace(c) || c == ':';
+        });
+        result[std::string(sname.begin(), it)] = ix;
+    }
+    return result;
+}
+
+// ExprTk based implementation
+struct ExprtkEvalImpl : Node {
+    int nfields_;
+    std::array<int, AKU_MAX_COLUMNS> indexes_;
+    std::array<double, AKU_MAX_COLUMNS> values_;
+    exprtk::symbol_table<double> symbols_;
+    exprtk::expression<double> expression_;
+    exprtk::parser<double> parser_;
+    std::shared_ptr<Node> next_;
+
+    ExprtkEvalImpl(const ExprtkEvalImpl&) = delete;
+    ExprtkEvalImpl& operator = (const ExprtkEvalImpl&) = delete;
+
+    //! Bild eval node using 'expr' field of the ptree object.
+    ExprtkEvalImpl(const boost::property_tree::ptree& ptree,
+                   const ReshapeRequest&              req,
+                   std::shared_ptr<Node>              next)
+        : next_(next)
+    {
+        std::unordered_map<std::string, int> fields = buildNameToIndexMapping(req);
+        // TODO: (optimization) use only relevant fields from the expression
+        nfields_ = static_cast<int>(fields.size());
+        auto ix = indexes_.begin();
+        auto vx = values_.begin();
+        for (auto const& kv: fields) {
+            symbols_.add_variable(kv.first, *vx, true);
+            *vx++ = 0.;
+            *ix++ = kv.second;
+        }
+        auto const& expr = ptree.get_child_optional("expr");
+        if (expr) {
+            expression_.register_symbol_table(symbols_);
+            try {
+                auto str = expr->get_value<std::string>("");
+                parser_.compile(str, expression_);
+            } catch (exprtk::parser_error::type const& error) {
+                std::stringstream msg;
+                msg << "Expression parsing error at: " << static_cast<int>(error.token.position)
+                    << " type: " << exprtk::parser_error::to_str(error.mode).c_str()
+                    << " message: " << error.diagnostic.c_str();
+                QueryParserError qerr(msg.str());
+            }
+        }
+        else {
+            QueryParserError err("'expr' field required");
+            BOOST_THROW_EXCEPTION(err);
+        }
+    }
+
+    virtual void complete() {
+        next_->complete();
+    }
+
+    virtual bool put(MutableSample& mut) {
+        for (int i = 0; i < nfields_; i++) {
+            values_[i] = *mut[indexes_[i]];
+        }
+        double val = expression_.value();
+        mut.collapse();
+        if (!std::isnan(val)) {
+            *mut[0] = val;
+            return next_->put(mut);
+        }
+        return true;
+    }
+
+    virtual void set_error(aku_Status status) {
+        next_->set_error(status);
+    }
+
+    virtual int get_requirements() const {
+        return TERMINAL;
+    }
+};
+
+
+// ExprtkEval
+
+ExprtkEval::ExprtkEval(const boost::property_tree::ptree& expr,
+                       const ReshapeRequest&              req,
+                       std::shared_ptr<Node>              next)
+    : impl_(std::make_shared<ExprtkEvalImpl>(expr, req, next))
+{
+}
+
+void ExprtkEval::complete()
+{
+    impl_->complete();
+}
+
+bool ExprtkEval::put(MutableSample& sample)
+{
+    return impl_->put(sample);
+}
+
+void ExprtkEval::set_error(aku_Status status)
+{
+    impl_->set_error(status);
+}
+
+int ExprtkEval::get_requirements() const
+{
+    return impl_->get_requirements();
+}
+
+
+// ------------------ native impl ----------------
 
 class ExpressionNode {
 public:
@@ -847,28 +978,6 @@ std::unique_ptr<ExpressionNode> buildNode(int depth, const PTree& node, const Lo
 // ----
 // Eval
 // ----
-
-
-static std::unordered_map<std::string, int> buildNameToIndexMapping(const QP::ReshapeRequest& req)
-{
-    std::unordered_map<std::string, int> result;
-    const int ncol = static_cast<int>(req.select.columns.size());
-    const SeriesMatcherBase* matcher = req.select.global_matcher;
-    for(int ix = 0; ix < ncol; ix++) {
-        if (req.select.columns[ix].ids.empty()) {
-            continue;
-        }
-        auto idcol = req.select.columns[ix].ids.front();
-        auto rawstr = matcher->id2str(idcol);
-        // copy metric name from the begining until the ' ' or ':'
-        std::string sname(rawstr.first, rawstr.first + rawstr.second);
-        auto it = std::find_if(sname.begin(), sname.end(), [](char c) {
-            return std::isspace(c) || c == ':';
-        });
-        result[std::string(sname.begin(), it)] = ix;
-    }
-    return result;
-}
 
 Eval::Eval(const boost::property_tree::ptree& ptree, const ReshapeRequest& req, std::shared_ptr<Node> next)
     : next_(next)
