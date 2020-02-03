@@ -7,7 +7,7 @@
 namespace Akumuli {
 namespace QP {
 
-class ExprtkEvalImpl;
+struct ExprtkEvalImpl;
 
 struct ExprtkEval : Node {
     std::shared_ptr<ExprtkEvalImpl> impl_;
