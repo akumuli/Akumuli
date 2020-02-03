@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <functional>
 
-#include "exprtk.hpp"
+#include "muParser.h"
 
 namespace Akumuli {
 namespace QP {
@@ -29,23 +29,21 @@ static std::unordered_map<std::string, int> buildNameToIndexMapping(const QP::Re
     return result;
 }
 
-// ExprTk based implementation
-struct ExprtkEvalImpl : Node {
+// Muparser based implementation
+struct MuparserEvalImpl : Node {
     int nfields_;
     std::array<int, AKU_MAX_COLUMNS> indexes_;
     std::array<double, AKU_MAX_COLUMNS> values_;
-    exprtk::symbol_table<double> symbols_;
-    exprtk::expression<double> expression_;
-    exprtk::parser<double> parser_;
+    mu::Parser parser_;
     std::shared_ptr<Node> next_;
 
-    ExprtkEvalImpl(const ExprtkEvalImpl&) = delete;
-    ExprtkEvalImpl& operator = (const ExprtkEvalImpl&) = delete;
+    MuparserEvalImpl(const MuparserEvalImpl&) = delete;
+    MuparserEvalImpl& operator = (const MuparserEvalImpl&) = delete;
 
     //! Bild eval node using 'expr' field of the ptree object.
-    ExprtkEvalImpl(const boost::property_tree::ptree& ptree,
-                   const ReshapeRequest&              req,
-                   std::shared_ptr<Node>              next)
+    MuparserEvalImpl(const boost::property_tree::ptree& ptree,
+                     const ReshapeRequest&              req,
+                     std::shared_ptr<Node>              next)
         : next_(next)
     {
         std::unordered_map<std::string, int> fields = buildNameToIndexMapping(req);
@@ -54,21 +52,21 @@ struct ExprtkEvalImpl : Node {
         auto ix = indexes_.begin();
         auto vx = values_.begin();
         for (auto const& kv: fields) {
-            symbols_.add_variable(kv.first, *vx, true);
+            parser_.DefineVar(kv.first, vx);
             *vx++ = 0.;
             *ix++ = kv.second;
         }
         auto const& expr = ptree.get_child_optional("expr");
         if (expr) {
-            expression_.register_symbol_table(symbols_);
             try {
+                parser_.EnableOptimizer(true);
                 auto str = expr->get_value<std::string>("");
-                parser_.compile(str, expression_);
-            } catch (exprtk::parser_error::type const& error) {
+                parser_.SetExpr(str);
+            } catch (mu::ParserError const& error) {
                 std::stringstream msg;
-                msg << "Expression parsing error at: " << static_cast<int>(error.token.position)
-                    << " type: " << exprtk::parser_error::to_str(error.mode).c_str()
-                    << " message: " << error.diagnostic.c_str();
+                msg << "Expression parsing error at: " << static_cast<int>(error.GetPos())
+                    << " token: " << error.GetToken()
+                    << " message: " << error.GetMsg();
                 QueryParserError qerr(msg.str());
             }
         }
@@ -86,7 +84,7 @@ struct ExprtkEvalImpl : Node {
         for (int i = 0; i < nfields_; i++) {
             values_[i] = *mut[indexes_[i]];
         }
-        double val = expression_.value();
+        double val = parser_.Eval();
         mut.collapse();
         if (!std::isnan(val)) {
             *mut[0] = val;
@@ -104,32 +102,31 @@ struct ExprtkEvalImpl : Node {
     }
 };
 
-
 // ExprtkEval
 
-ExprtkEval::ExprtkEval(const boost::property_tree::ptree& expr,
-                       const ReshapeRequest&              req,
-                       std::shared_ptr<Node>              next)
-    : impl_(std::make_shared<ExprtkEvalImpl>(expr, req, next))
+ExprEval::ExprEval(const boost::property_tree::ptree& expr,
+                   const ReshapeRequest&              req,
+                   std::shared_ptr<Node>              next)
+    : impl_(std::make_shared<MuparserEvalImpl>(expr, req, next))
 {
 }
 
-void ExprtkEval::complete()
+void ExprEval::complete()
 {
     impl_->complete();
 }
 
-bool ExprtkEval::put(MutableSample& sample)
+bool ExprEval::put(MutableSample& sample)
 {
     return impl_->put(sample);
 }
 
-void ExprtkEval::set_error(aku_Status status)
+void ExprEval::set_error(aku_Status status)
 {
     impl_->set_error(status);
 }
 
-int ExprtkEval::get_requirements() const
+int ExprEval::get_requirements() const
 {
     return impl_->get_requirements();
 }

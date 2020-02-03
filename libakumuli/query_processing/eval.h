@@ -7,18 +7,18 @@
 namespace Akumuli {
 namespace QP {
 
-class ExprtkEvalImpl;
+class MuparserEvalImpl;
 
-struct ExprtkEval : Node {
-    std::shared_ptr<ExprtkEvalImpl> impl_;
+struct ExprEval : Node {
+    std::shared_ptr<MuparserEvalImpl> impl_;
 
-    ExprtkEval(const ExprtkEval&) = delete;
-    ExprtkEval& operator = (const ExprtkEval&) = delete;
+    ExprEval(const ExprEval&) = delete;
+    ExprEval& operator = (const ExprEval&) = delete;
 
     //! Bild eval node using 'expr' field of the ptree object.
-    ExprtkEval(const boost::property_tree::ptree& expr,
-               const ReshapeRequest&              req,
-               std::shared_ptr<Node>              next);
+    ExprEval(const boost::property_tree::ptree& expr,
+             const ReshapeRequest&              req,
+             std::shared_ptr<Node>              next);
 
     virtual void complete();
 
