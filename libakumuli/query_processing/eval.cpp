@@ -2,6 +2,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <functional>
+#include <set>
 
 #include "muParser.h"
 
@@ -47,15 +48,6 @@ struct MuparserEvalImpl : Node {
         : next_(next)
     {
         std::unordered_map<std::string, int> fields = buildNameToIndexMapping(req);
-        // TODO: (optimization) use only relevant fields from the expression
-        nfields_ = static_cast<int>(fields.size());
-        auto ix = indexes_.begin();
-        auto vx = values_.begin();
-        for (auto const& kv: fields) {
-            parser_.DefineVar(kv.first, vx);
-            *vx++ = 0.;
-            *ix++ = kv.second;
-        }
         auto const& expr = ptree.get_child_optional("expr");
         if (expr) {
             try {
@@ -73,6 +65,44 @@ struct MuparserEvalImpl : Node {
         else {
             QueryParserError err("'expr' field required");
             BOOST_THROW_EXCEPTION(err);
+        }
+        auto used = parser_.GetUsedVar();
+        nfields_ = static_cast<int>(used.size());
+        auto ix = indexes_.begin();
+        auto vx = values_.begin();
+        std::set<std::string> defined;
+        // The indexes in indexes_ array should be sorted to
+        // improve runtime performance.
+        for (auto const& kv: fields) {
+            if (used.count(kv.first)) {
+                parser_.DefineVar(kv.first, vx);
+                *vx++ = 0.;
+                *ix++ = kv.second;
+                defined.insert(kv.first);
+            }
+        }
+        std::stringstream msg;
+        msg << "Unknown variable [";
+        bool error = false;
+        for (auto kv: used) {
+            if (!defined.count(kv.first)) {
+                if (!error) {
+                    msg << kv.first;
+                }
+                else {
+                    msg << ", " << kv.first;
+                }
+                error = true;
+            }
+        }
+        if (error) {
+            msg << "]";
+            QueryParserError parsererr(msg.str());
+            BOOST_THROW_EXCEPTION(parsererr);
+        }
+        if (parser_.GetNumResults() != 1) {
+            QueryParserError parsererr("Mutiple results are not supported");
+            BOOST_THROW_EXCEPTION(parsererr);
         }
     }
 
@@ -1041,5 +1071,6 @@ int Eval::get_requirements() const {
 }
 
 static QueryParserToken<Eval> eval_token("eval");
+static QueryParserToken<ExprEval> eval2_token("eval2");
 
 }}  // namespace

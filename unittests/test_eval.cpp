@@ -722,3 +722,17 @@ BOOST_AUTO_TEST_CASE(Test_expr_eval_1) {
     BOOST_REQUIRE_EQUAL(next->result_, 10);
 }
 
+BOOST_AUTO_TEST_CASE(Test_expr_eval_2) {
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree("{\"expr\":\"1 + 2 + 3 + col0 + col1\"}");
+    auto next = std::make_shared<MockNode>();
+    ExprEval eval(ptree, req, next);
+    BigSample src;
+    init_sample(src, {4, 5});
+    MutableSample ms(&src);
+    eval.put(ms);
+    BOOST_REQUIRE_EQUAL(next->result_, 15);
+}
+
+
