@@ -7,7 +7,7 @@
 namespace Akumuli {
 namespace QP {
 
-class MuparserEvalImpl;
+struct MuparserEvalImpl;
 
 struct ExprEval : Node {
     std::shared_ptr<MuparserEvalImpl> impl_;
