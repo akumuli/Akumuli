@@ -32,8 +32,8 @@ static std::unordered_map<std::string, int> buildNameToIndexMapping(const QP::Re
 // Muparser based implementation
 struct MuparserEvalImpl : Node {
     int nfields_;
-    std::array<int, AKU_MAX_COLUMNS> indexes_;
-    std::array<double, AKU_MAX_COLUMNS> values_;
+    std::array<int, 32> indexes_;
+    std::array<double, 32> values_;
     mu::Parser parser_;
     std::shared_ptr<Node> next_;
 
@@ -82,7 +82,8 @@ struct MuparserEvalImpl : Node {
 
     virtual bool put(MutableSample& mut) {
         for (int i = 0; i < nfields_; i++) {
-            values_[i] = *mut[indexes_[i]];
+            auto xs = mut[indexes_[i]];
+            values_[i] = xs ? *xs : 0.0;
         }
         double val = parser_.Eval();
         mut.collapse();
