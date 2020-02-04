@@ -32,9 +32,12 @@ static std::unordered_map<std::string, int> buildNameToIndexMapping(const QP::Re
 
 // Muparser based implementation
 struct MuparserEvalImpl : Node {
-    int nfields_;
-    std::array<int, 32> indexes_;
-    std::array<double, 32> values_;
+    enum {
+        MAX_VALUES = MutableSample::MAX_PAYLOAD_SIZE / sizeof(double)
+    };
+    u32 nfields_;
+    std::array<u32, MAX_VALUES> indexes_;
+    std::array<double, MAX_VALUES> values_;
     mu::Parser parser_;
     std::shared_ptr<Node> next_;
 
@@ -67,7 +70,7 @@ struct MuparserEvalImpl : Node {
             BOOST_THROW_EXCEPTION(err);
         }
         auto used = parser_.GetUsedVar();
-        nfields_ = static_cast<int>(used.size());
+        nfields_ = static_cast<u32>(used.size());
         auto ix = indexes_.begin();
         auto vx = values_.begin();
         std::set<std::string> defined;
@@ -77,7 +80,7 @@ struct MuparserEvalImpl : Node {
             if (used.count(kv.first)) {
                 parser_.DefineVar(kv.first, vx);
                 *vx++ = 0.;
-                *ix++ = kv.second;
+                *ix++ = static_cast<u32>(kv.second);
                 defined.insert(kv.first);
             }
         }
@@ -111,7 +114,7 @@ struct MuparserEvalImpl : Node {
     }
 
     virtual bool put(MutableSample& mut) {
-        for (int i = 0; i < nfields_; i++) {
+        for (u32 i = 0; i < nfields_; i++) {
             auto xs = mut[indexes_[i]];
             values_[i] = xs ? *xs : 0.0;
         }
