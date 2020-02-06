@@ -4,6 +4,8 @@
 #include <functional>
 #include <set>
 
+#include <boost/algorithm/string.hpp>
+
 #include "muParser.h"
 
 namespace Akumuli {
@@ -44,6 +46,27 @@ struct MuparserEvalImpl : Node {
     MuparserEvalImpl(const MuparserEvalImpl&) = delete;
     MuparserEvalImpl& operator = (const MuparserEvalImpl&) = delete;
 
+    static std::string preProcessExpression(std::string input,
+                                            const ReshapeRequest& req,
+                                            std::map<std::string, std::string>* varmap)
+    {
+        std::vector<std::string> vars;
+        for (auto const& col: req.select.columns) {
+            if (col.ids.empty()) {
+                continue;
+            }
+            auto id = col.ids.front();
+            auto st = req.select.global_matcher->id2str(id);
+            vars.push_back(std::string(st.first, st.first + st.second));
+        }
+        for (u32 i = 0; i < vars.size(); i++) {
+            std::string varname = "_var_" + std::to_string(i);
+            varmap->insert(std::make_pair(varname, vars[i]));
+            boost::algorithm::replace_all(input, vars[i], varname);
+        }
+        return input;
+    }
+
     //! Bild eval node using 'expr' field of the ptree object.
     MuparserEvalImpl(const boost::property_tree::ptree& ptree,
                      const ReshapeRequest&              req,
@@ -51,11 +74,13 @@ struct MuparserEvalImpl : Node {
         : next_(next)
     {
         std::unordered_map<std::string, int> fields = buildNameToIndexMapping(req);
+        std::map<std::string, std::string> varmap;
         auto const& expr = ptree.get_child_optional("expr");
         if (expr) {
             try {
                 parser_.EnableOptimizer(true);
                 auto str = expr->get_value<std::string>("");
+                auto pstr = preProcessExpression(str, req, &varmap);
                 parser_.SetExpr(str);
             } catch (mu::ParserError const& error) {
                 std::stringstream msg;
@@ -77,11 +102,12 @@ struct MuparserEvalImpl : Node {
         // The indexes in indexes_ array should be sorted to
         // improve runtime performance.
         for (auto const& kv: fields) {
-            if (used.count(kv.first)) {
-                parser_.DefineVar(kv.first, vx);
+            auto varname = varmap[kv.first];
+            if (used.count(varname)) {
+                parser_.DefineVar(varname, vx);
                 *vx++ = 0.;
                 *ix++ = static_cast<u32>(kv.second);
-                defined.insert(kv.first);
+                defined.insert(varname);
             }
         }
         std::stringstream msg;
