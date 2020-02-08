@@ -735,4 +735,31 @@ BOOST_AUTO_TEST_CASE(Test_expr_eval_2) {
     BOOST_REQUIRE_EQUAL(next->result_, 15);
 }
 
+BOOST_AUTO_TEST_CASE(Test_expr_eval_3) {
+    // Multiple expressions
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree("{\"expr\":\"1, 2\"}");
+    auto next = std::make_shared<MockNode>();
+    BOOST_REQUIRE_THROW(ExprEval eval(ptree, req, next), QueryParserError);
+}
+
+BOOST_AUTO_TEST_CASE(Test_expr_eval_4) {
+    // Unknown metric names
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree("{\"expr\":\"1 + foo + bar\"}");
+    auto next = std::make_shared<MockNode>();
+    BOOST_REQUIRE_THROW(ExprEval eval(ptree, req, next), QueryParserError);
+}
+
+BOOST_AUTO_TEST_CASE(Test_expr_eval_5) {
+    // Invalid expression
+    ReshapeRequest req;
+    init_request(&req);
+    auto ptree = init_ptree("{\"expr\":\"1 x 1\"}");
+    auto next = std::make_shared<MockNode>();
+    BOOST_REQUIRE_THROW(ExprEval eval(ptree, req, next), QueryParserError);
+}
+
 

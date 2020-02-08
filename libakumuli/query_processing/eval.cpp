@@ -82,12 +82,14 @@ struct MuparserEvalImpl : Node {
         std::unordered_map<std::string, int> fields = buildNameToIndexMapping(req);
         std::map<std::string, std::string> varmap;
         auto const& expr = ptree.get_child_optional("expr");
+        std::map<std::string, double*> used;
         if (expr) {
             try {
                 parser_.EnableOptimizer(true);
                 auto str = expr->get_value<std::string>("");
                 auto pstr = preProcessExpression(str, req, &varmap);
                 parser_.SetExpr(pstr);
+                used = parser_.GetUsedVar();
             } catch (mu::ParserError const& error) {
                 std::stringstream msg;
                 msg << "Expression parsing error at: " << static_cast<int>(error.GetPos())
@@ -100,7 +102,6 @@ struct MuparserEvalImpl : Node {
             QueryParserError err("'expr' field required");
             BOOST_THROW_EXCEPTION(err);
         }
-        auto used = parser_.GetUsedVar();
         nfields_ = static_cast<u32>(used.size());
         auto ix = indexes_.begin();
         auto vx = values_.begin();
