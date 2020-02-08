@@ -57,11 +57,17 @@ struct MuparserEvalImpl : Node {
             }
             auto id = col.ids.front();
             auto st = req.select.global_matcher->id2str(id);
-            vars.push_back(std::string(st.first, st.first + st.second));
+            // extract series name
+            std::string metric(st.first, st.first + st.second);
+            auto pos = metric.find(' ');
+            if (pos != std::string::npos) {
+                metric.resize(pos);
+            }
+            vars.push_back(metric);
         }
         for (u32 i = 0; i < vars.size(); i++) {
             std::string varname = "_var_" + std::to_string(i);
-            varmap->insert(std::make_pair(varname, vars[i]));
+            varmap->insert(std::make_pair(vars[i], varname));
             boost::algorithm::replace_all(input, vars[i], varname);
         }
         return input;
@@ -81,7 +87,7 @@ struct MuparserEvalImpl : Node {
                 parser_.EnableOptimizer(true);
                 auto str = expr->get_value<std::string>("");
                 auto pstr = preProcessExpression(str, req, &varmap);
-                parser_.SetExpr(str);
+                parser_.SetExpr(pstr);
             } catch (mu::ParserError const& error) {
                 std::stringstream msg;
                 msg << "Expression parsing error at: " << static_cast<int>(error.GetPos())

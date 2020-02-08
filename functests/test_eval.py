@@ -41,12 +41,9 @@ def test_group_aggregate_join_forward(dtstart, delta, N, step, agg_func):
     for line in response:
         try:
             columns = line.split(',')
-
             if len(columns) != 3:
                 raise ValueError("Unexpected number of columns in the output")
-
             sname = columns[0]
-
             if not sname.startswith("|".join(metrics)):
                 raise ValueError("Unexpected series name {0}".format(columns[0]))
 
@@ -57,9 +54,9 @@ def test_group_aggregate_join_forward(dtstart, delta, N, step, agg_func):
             exptimestamp += delta
 
             # Check that all three values are the same
-            user, syst, idle = tuple([float(it) for it in columns[2:]])
-            if user != syst or syst != idle:
-                raise ValueError("Unexpected value {0} {1} {2}".format(user, syst, idle))
+            zero = int(columns[2])
+            if zero != 0:
+                raise ValueError("Unexpected value {0}".format(zero))
 
             iterations += 1
         except:
@@ -68,6 +65,50 @@ def test_group_aggregate_join_forward(dtstart, delta, N, step, agg_func):
     if iterations != N:
         raise ValueError("Invalid number of result {0} expected {1} received".format(N, iterations))
 
+@api_test("group aggregate join backward")
+def test_group_aggregate_join_backward(dtstart, delta, N, step, agg_func):
+    """Aggregate all data and check result"""
+    begin = dtstart + delta * N
+    end = dtstart - delta
+    metrics = [ "cpu.user", "cpu.syst" ]
+    query = att.make_group_aggregate_join_query(metrics, agg_func, begin, end, 
+                                                step,
+                                                output={"format": "csv"},
+                                                where={"tag3": "D", "tag2": "C"},
+                                                apply=[
+                                                    { "name": "eval2", "expr": "cpu.user - cpu.syst" }
+                                                ])
+
+    queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
+    response = urlopen(queryurl, json.dumps(query))
+    iterations = 0
+    exptimestamp = begin
+    for line in response:
+        try:
+            columns = line.split(',')
+            if len(columns) != 3:
+                raise ValueError("Unexpected number of columns in the output")
+            sname = columns[0]
+            if not sname.startswith("|".join(metrics)):
+                raise ValueError("Unexpected series name {0}".format(columns[0]))
+
+            timestamp = att.parse_timestamp(columns[1].strip())
+            if timestamp != exptimestamp:
+                tserrormsg = "Actual timestamp value: {0}\nExpected timestamp value {1}".format(columns[1].strip(), exptimestamp)
+                raise ValueError(tserrormsg)
+            exptimestamp -= delta
+
+            # Check that all three values are the same
+            zero = int(columns[2])
+            if zero != 0:
+                raise ValueError("Unexpected value {0}".format(zero))
+
+            iterations += 1
+        except:
+            print("Error at line: {0}".format(line))
+            raise
+    if iterations != N:
+        raise ValueError("Invalid number of result {0} expected {1} received".format(N, iterations))
 
 
 def main(path):
@@ -102,6 +143,18 @@ def main(path):
 
         # Run tests
         test_group_aggregate_join_forward(dt, datetime.timedelta(minutes=1),  1440, '1m',  'min')
+        test_group_aggregate_join_forward(dt, datetime.timedelta(minutes=10), 144,  '10m', 'min')
+        test_group_aggregate_join_forward(dt, datetime.timedelta(minutes=60), 24,   '1h',  'min')
+        test_group_aggregate_join_forward(dt, datetime.timedelta(minutes=1),  1440, '1m',  'max')
+        test_group_aggregate_join_forward(dt, datetime.timedelta(minutes=10), 144,  '10m', 'max')
+        test_group_aggregate_join_forward(dt, datetime.timedelta(minutes=60), 24,   '1h',  'max')
+
+        test_group_aggregate_join_backward(dt, datetime.timedelta(minutes=1),  1440, '1m',  'min')
+        test_group_aggregate_join_backward(dt, datetime.timedelta(minutes=10), 144,  '10m', 'min')
+        test_group_aggregate_join_backward(dt, datetime.timedelta(minutes=60), 24,   '1h',  'min')
+        test_group_aggregate_join_backward(dt, datetime.timedelta(minutes=1),  1440, '1m',  'max')
+        test_group_aggregate_join_backward(dt, datetime.timedelta(minutes=10), 144,  '10m', 'max')
+        test_group_aggregate_join_backward(dt, datetime.timedelta(minutes=60), 24,   '1h',  'max')
     finally:
         print("Stopping server...")
         akumulid.stop()
