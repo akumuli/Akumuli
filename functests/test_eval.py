@@ -31,7 +31,7 @@ def test_group_aggregate_join_forward(dtstart, delta, N, step, agg_func):
                                                 output={"format": "csv"},
                                                 where={"tag3": "D", "tag2": "C"},
                                                 apply=[
-                                                    { "name": "eval2", "expr": "cpu.user - cpu.syst" }
+                                                    { "name": "eval", "expr": "cpu.user - cpu.syst" }
                                                 ])
 
     queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
@@ -76,7 +76,7 @@ def test_group_aggregate_join_backward(dtstart, delta, N, step, agg_func):
                                                 output={"format": "csv"},
                                                 where={"tag3": "D", "tag2": "C"},
                                                 apply=[
-                                                    { "name": "eval2", "expr": "cpu.user - cpu.syst" }
+                                                    { "name": "eval", "expr": "cpu.user - cpu.syst" }
                                                 ])
 
     queryurl = "http://{0}:{1}/api/query".format(HOST, HTTPPORT)
