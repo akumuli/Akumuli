@@ -115,6 +115,11 @@ if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
     exit 1
 fi
+python functests/test_eval.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
 
 echo "Set up unconstrained environment"
 python functests/akumulid_test_tools.py set_nvolumes 0
