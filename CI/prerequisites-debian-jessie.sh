@@ -8,4 +8,5 @@ apt-get install -y liblog4cxx10-dev liblog4cxx10
 apt-get install -y libjemalloc-dev
 apt-get install -y libsqlite3-dev
 apt-get install -y libmicrohttpd-dev
+apt-get install -y libmuparser-dev
 apt-get install -y cmake
