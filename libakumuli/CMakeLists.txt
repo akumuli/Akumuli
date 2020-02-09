@@ -69,9 +69,9 @@ target_link_libraries(akumuli
     "${APR_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     ${Boost_LIBRARIES}
+    ${muparser_LIBRARIES}
     lz4
     roaring
-    muparser
     pthread)
 
 # Shared object version: "major.minor.micro"

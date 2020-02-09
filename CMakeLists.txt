@@ -123,12 +123,14 @@ find_package(Threads REQUIRED)
 # this doesn't work with centos, disabled until solution will be found
 #find_package(JeMalloc REQUIRED)
 find_package(libmicrohttpd REQUIRED)
+find_package(muparser REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
 include_directories("${APR_INCLUDE_DIR}")
 include_directories("${APRUTIL_INCLUDE_DIR}")
 include_directories("${SQLITE3_INCLUDE_DIR}")
 include_directories("${LIBMICROHTTPD_INCLUDE_DIRS}")
+include_directories("${muparser_INCLUDES}")
 
 add_definitions(-fvisibility=hidden)
 

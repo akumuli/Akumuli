@@ -305,7 +305,7 @@ target_link_libraries(
     ${Boost_LIBRARIES}
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
-    muparser
+    ${muparser_LIBRARIES}
     pthread
 )
 
