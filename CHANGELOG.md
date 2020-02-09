@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.76
+--------------
+
+IMPROVEMENT
+
+* Expression evaluation using muParser library
+
 Version 0.8.75
 --------------
 
