@@ -11,36 +11,29 @@
 #   muparser_LIBRARIES           ... full path to muparser library
 #   muparser_INCLUDES            ... muparser include directory
 #
-# It defines the following targets:
-#   muparser::muparser           ... muparser library to link against
 #
 
-find_library(muparser_LIBRARY
-    NAMES muparser muparserd
-    HINTS ${muparser_ROOT} ENV muparser_ROOT
-)
+find_package(PkgConfig)
 
-find_path(muparser_INCLUDE_DIR
-    muParserDef.h
-    HINTS ${muparser_ROOT} ENV muparser_ROOT
-)
+pkg_check_modules(PC_MUPARSER QUIET muparser)
+set(MUPARSER_DEFINITIONS ${PC_MUPARSER_CFLAGS_OTHER})
 
-mark_as_advanced(muparser_INCLUDE_DIR muparser_LIBRARY)
+find_path(muparser_INCLUDES muParser.h
+          HINTS ${PC_MUPARSER_INCLUDEDIR} ${PC_MUPARSER_INCLUDE_DIRS})
 
-include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(muparser
-    DEFAULT_MSG
-    muparser_LIBRARY muparser_INCLUDE_DIR)
+find_library(muparser_LIBRARIES NAMES muparser libmuparser
+             HINTS ${PC_MUPARSER_LIBDIR} ${PC_MUPARSER_LIBRARY_DIRS} )
 
-if (muparser_FOUND)
-    set(muparser_LIBRARIES ${muparser_LIBRARY} )
-    set(muparser_INCLUDES ${muparser_INCLUDE_DIR} )
+set(MUPARSER_LIBRARIES ${muparser_LIBRARIES} )
+set(MUPARSER_INCLUDE_DIRS ${muparser_INCLUDES} )
 
-    # add the target
-    add_library(muparser::muparser SHARED IMPORTED)
-    set_target_properties(muparser::muparser
-      PROPERTIES IMPORTED_LOCATION ${muparser_LIBRARIES}
-                 INTERACE_INCLUDE_DIRECTORIES ${muparser_INCLUDES}
-    )
+set(muparser_FOUND FALSE)
+if(muparser_INCLUDES AND muparser_LIBRARIES)
+    set(muparser_FOUND TRUE)
+    MESSAGE(STATUS "Found muParser: ${muparser_LIBRARIES}")
+else()
+    MESSAGE(STATUS "Not found muParser")
 endif()
+
+mark_as_advanced(muparser_INCLUDES muparser_LIBRARIES )
 
