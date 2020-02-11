@@ -100,6 +100,11 @@ if [ $? -ne 0 ]; then
     echo "Advanced test failed" >&2
     exit 1
 fi
+python functests/test_eval.py akumulid/
+if [ $? -ne 0 ]; then
+    echo "Advanced test failed" >&2
+    exit 1
+fi
 
 bash functests/roundtrip.sh
 if [ $? -ne 0 ]; then

@@ -8,5 +8,6 @@ sudo apt-get install -y liblog4cxx-dev
 sudo apt-get install -y libjemalloc-dev
 sudo apt-get install -y libsqlite3-dev
 sudo apt-get install -y libmicrohttpd-dev
+sudo apt-get install -y libmuparser-dev
 sudo apt-get install -y cmake
 sudo apt-get install -y wget curl

@@ -11,4 +11,5 @@ yum install -y log4cxx log4cxx-devel
 yum install -y jemalloc jemalloc-devel
 yum install -y sqlite sqlite-devel
 yum install -y libmicrohttpd libmicrohttpd-devel
+yum install -y muParser muParser-devel
 yum install -y cmake

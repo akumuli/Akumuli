@@ -9,3 +9,4 @@ brew install sqlite
 brew install libmicrohttpd
 brew install apr
 brew install apr-util
+brew install muparser

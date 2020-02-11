@@ -33,6 +33,7 @@ file(COPY
     test_no_wal_recovery.py
     test_high_cardinality.py
     test_events.py
+    test_eval.py
     roundtrip.sh
     DESTINATION
     ./
