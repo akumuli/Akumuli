@@ -996,6 +996,9 @@ public:
         : NBTreeSBlockIteratorBase<AggregationResult>(bstore, sblock, begin, end)
         , leftmost_leaf_found_(false)
     {
+        if (std::min(begin, end) == AKU_MIN_TIMESTAMP && std::max(begin, end) == AKU_MAX_TIMESTAMP) {
+            leftmost_leaf_found_ = true;
+        }
     }
 
     NBTreeSBlockAggregator(std::shared_ptr<BlockStore> bstore,
@@ -1005,6 +1008,9 @@ public:
         : NBTreeSBlockIteratorBase<AggregationResult>(bstore, addr, begin, end)
         , leftmost_leaf_found_(false)
     {
+        if (std::min(begin, end) == AKU_MIN_TIMESTAMP && std::max(begin, end) == AKU_MAX_TIMESTAMP) {
+            leftmost_leaf_found_ = true;
+        }
     }
     virtual std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> make_leaf_iterator(const SubtreeRef &ref) override;
     virtual std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> make_superblock_iterator(const SubtreeRef &ref) override;
