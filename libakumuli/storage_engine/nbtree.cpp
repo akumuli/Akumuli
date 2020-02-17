@@ -1110,7 +1110,7 @@ struct NBTreeSBlockAggregator : SeriesOperator<AggregationResult>
                            aku_Timestamp begin,
                            aku_Timestamp end)
         : leftmost_leaf_found_(std::min(begin, end) == AKU_MIN_TIMESTAMP && std::max(begin, end) == AKU_MAX_TIMESTAMP)
-        , impl_(bstore, sblock, begin, end, leftmost_leaf_found_)
+        , impl_(bstore, sblock, std::min(begin, end), std::max(begin, end), leftmost_leaf_found_)
     {
     }
     NBTreeSBlockAggregator(std::shared_ptr<BlockStore> bstore,
@@ -1118,7 +1118,7 @@ struct NBTreeSBlockAggregator : SeriesOperator<AggregationResult>
                                aku_Timestamp begin,
                                aku_Timestamp end)
         : leftmost_leaf_found_(std::min(begin, end) == AKU_MIN_TIMESTAMP && std::max(begin, end) == AKU_MAX_TIMESTAMP)
-        , impl_(bstore, addr, begin, end, leftmost_leaf_found_)
+        , impl_(bstore, addr, std::min(begin, end), std::max(begin, end), leftmost_leaf_found_)
     {
     }
     std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size) override {

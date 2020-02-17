@@ -2595,7 +2595,7 @@ BOOST_AUTO_TEST_CASE(Test_nbtree_scan_order_idempotence_2) {
     test_nbtree_scan_order_idempotence(34, 100);
 }
 
-void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
+void test_nbtree_aggregate_direction_independence(size_t nremoved, size_t nblocks) {
     // Build this tree structure.
     aku_Timestamp gen = 1000;
     aku_Timestamp first_ts = gen, begin = gen, end = gen;
@@ -2702,16 +2702,16 @@ void test_nbtree_aggregate_order_idempotence(size_t nremoved, size_t nblocks) {
     test_group_aggregate(first_ts, end, 10000);
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_0) {
-    test_nbtree_aggregate_order_idempotence(10, 20);
+BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_direction_independence_0) {
+    test_nbtree_aggregate_direction_independence(10, 20);
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_1) {
-    test_nbtree_aggregate_order_idempotence(33, 100);
+BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_direction_independence_1) {
+    test_nbtree_aggregate_direction_independence(33, 100);
 }
 
-BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_order_idempotence_2) {
-    test_nbtree_aggregate_order_idempotence(34, 100);
+BOOST_AUTO_TEST_CASE(Test_nbtree_aggregate_direction_independence_2) {
+    test_nbtree_aggregate_direction_independence(34, 100);
 }
 
 
