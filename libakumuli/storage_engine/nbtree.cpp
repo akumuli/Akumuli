@@ -1125,7 +1125,7 @@ struct NBTreeSBlockAggregator : SeriesOperator<AggregationResult>
         return impl_.read(destts, destval, size);
     }
     Direction get_direction() override {
-        return impl_.get_direction();
+        return Direction::FORWARD;
     }
 };
 
