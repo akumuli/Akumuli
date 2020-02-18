@@ -983,27 +983,28 @@ ValueAggregator::Direction ValueAggregator::get_direction() {
 /** Superblock aggregator (iterator that computes different aggregates e.g. min/max/avg/sum).
   * Uses metadata stored in superblocks in some cases.
   */
-class NBTreeSBlockAggregator : public NBTreeSBlockIteratorBase<AggregationResult> {
+class NBTreeSBlockAggregatorImpl : public NBTreeSBlockIteratorBase<AggregationResult> {
 
-    bool leftmost_leaf_found_;
+    bool &leftmost_leaf_found_;
 
 public:
     template<class SuperblockT>
-    NBTreeSBlockAggregator(std::shared_ptr<BlockStore> bstore,
-                           SuperblockT const& sblock,
-                           aku_Timestamp begin,
-                           aku_Timestamp end)
+    NBTreeSBlockAggregatorImpl(std::shared_ptr<BlockStore> bstore,
+                               SuperblockT const& sblock, aku_Timestamp begin,
+                               aku_Timestamp end,
+                               bool &leftmost_leaf_found)
         : NBTreeSBlockIteratorBase<AggregationResult>(bstore, sblock, begin, end)
-        , leftmost_leaf_found_(false)
+        , leftmost_leaf_found_(leftmost_leaf_found)
     {
     }
 
-    NBTreeSBlockAggregator(std::shared_ptr<BlockStore> bstore,
-                           LogicAddr addr,
-                           aku_Timestamp begin,
-                           aku_Timestamp end)
+    NBTreeSBlockAggregatorImpl(std::shared_ptr<BlockStore> bstore,
+                               LogicAddr addr,
+                               aku_Timestamp begin,
+                               aku_Timestamp end,
+                               bool& leftmost_leaf_found)
         : NBTreeSBlockIteratorBase<AggregationResult>(bstore, addr, begin, end)
-        , leftmost_leaf_found_(false)
+        , leftmost_leaf_found_(leftmost_leaf_found)
     {
     }
     virtual std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> make_leaf_iterator(const SubtreeRef &ref) override;
@@ -1011,7 +1012,7 @@ public:
     virtual std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size) override;
 };
 
-std::tuple<aku_Status, size_t> NBTreeSBlockAggregator::read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
+std::tuple<aku_Status, size_t> NBTreeSBlockAggregatorImpl::read(aku_Timestamp *destts, AggregationResult *destval, size_t size) {
     if (size == 0) {
         return std::make_pair(AKU_EBAD_ARG, 0ul);
     }
@@ -1059,7 +1060,7 @@ std::tuple<aku_Status, size_t> NBTreeSBlockAggregator::read(aku_Timestamp *destt
     return std::make_tuple(status, size);
 }
 
-std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregator::make_leaf_iterator(SubtreeRef const& ref) {
+std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> NBTreeSBlockAggregatorImpl::make_leaf_iterator(SubtreeRef const& ref) {
     if (!bstore_->exists(ref.addr)) {
         TIter empty;
         return std::make_tuple(AKU_EUNAVAILABLE, std::move(empty));
@@ -1077,7 +1078,7 @@ std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregat
     return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
 
-std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregator::make_superblock_iterator(SubtreeRef const& ref) {
+std::tuple<aku_Status, std::unique_ptr<AggregateOperator>> NBTreeSBlockAggregatorImpl::make_superblock_iterator(SubtreeRef const& ref) {
     if (!bstore_->exists(ref.addr)) {
         TIter empty;
         return std::make_tuple(AKU_EUNAVAILABLE, std::move(empty));
@@ -1087,14 +1088,46 @@ std::tuple<aku_Status, std::unique_ptr<AggregateOperator> > NBTreeSBlockAggregat
     std::unique_ptr<AggregateOperator> result;
     if (leftmost_leaf_found_ && (min <= ref.begin && ref.end < max)) {
         // We don't need to go to lower level, value from subtree ref can be used instead.
+        // This optimization is only enable if we've found leftmost leaf node (otherwise we
+        // might read the outdated aggregates that contain information from the deleted nodes)
         auto agg = INIT_AGGRES;
         agg.copy_from(ref);
         result.reset(new ValueAggregator(ref.end, agg, get_direction()));
     } else {
-        result.reset(new NBTreeSBlockAggregator(bstore_, ref.addr, begin_, end_));
+        result.reset(new NBTreeSBlockAggregatorImpl(bstore_, ref.addr, begin_, end_, leftmost_leaf_found_));
     }
     return std::make_tuple(AKU_SUCCESS, std::move(result));
 }
+
+struct NBTreeSBlockAggregator : SeriesOperator<AggregationResult>
+{
+    bool leftmost_leaf_found_;
+    NBTreeSBlockAggregatorImpl impl_;
+
+    template<class SuperblockT>
+    NBTreeSBlockAggregator(std::shared_ptr<BlockStore> bstore,
+                           SuperblockT const& sblock,
+                           aku_Timestamp begin,
+                           aku_Timestamp end)
+        : leftmost_leaf_found_(std::min(begin, end) == AKU_MIN_TIMESTAMP && std::max(begin, end) == AKU_MAX_TIMESTAMP)
+        , impl_(bstore, sblock, std::min(begin, end), std::max(begin, end), leftmost_leaf_found_)
+    {
+    }
+    NBTreeSBlockAggregator(std::shared_ptr<BlockStore> bstore,
+                               LogicAddr addr,
+                               aku_Timestamp begin,
+                               aku_Timestamp end)
+        : leftmost_leaf_found_(std::min(begin, end) == AKU_MIN_TIMESTAMP && std::max(begin, end) == AKU_MAX_TIMESTAMP)
+        , impl_(bstore, addr, std::min(begin, end), std::max(begin, end), leftmost_leaf_found_)
+    {
+    }
+    std::tuple<aku_Status, size_t> read(aku_Timestamp *destts, AggregationResult *destval, size_t size) override {
+        return impl_.read(destts, destval, size);
+    }
+    Direction get_direction() override {
+        return Direction::FORWARD;
+    }
+};
 
 
 // ///////////////////////// //

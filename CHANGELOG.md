@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.77
+--------------
+
+BUG FIX
+
+* Fix #341 aggregate query optimization
+
 Version 0.8.76
 --------------
 
