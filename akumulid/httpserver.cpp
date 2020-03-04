@@ -2,6 +2,7 @@
 #include "utility.h"
 #include <cstring>
 #include <thread>
+#include <zlib.h>
 
 #include <boost/bind.hpp>
 
@@ -9,6 +10,59 @@ namespace Akumuli {
 namespace Http {
 
 static Logger logger("http");
+
+
+class CompressedStream : public ReadOperation {
+    ReadOperation *cursor_;
+    char* buffer_;
+    enum {
+        ALIGN = 64,
+        BUFFER_SIZE = 0x1000,
+    };
+public:
+    CompressedStream(ReadOperation* cur)
+        : cursor_(cur)
+        , buffer_(static_cast<char*>(aligned_alloc(ALIGN, BUFFER_SIZE)))
+    {
+    }
+
+    ~CompressedStream() {
+        delete cursor_;
+        free(buffer_);
+    }
+
+    void start() override {
+        cursor_->start();
+    }
+    void append(const char *data, size_t data_size) override {
+        cursor_->append(data, data_size);
+    }
+    aku_Status get_error() override {
+        return cursor_->get_error();
+    }
+    const char *get_error_message() override {
+        return cursor_->get_error_message();
+    }
+    std::tuple<size_t, bool> read_some(char *buf, size_t buf_size) override {
+        aku_Status status;
+        size_t sz;
+        std::tie(status, sz) = cursor_->read_some(buffer_, BUFFER_SIZE);
+        // TODO: check error
+        unsigned long destsz = static_cast<unsigned long>(buf_size);
+        auto zstatus = compress(reinterpret_cast<u8*>(buf),
+                                &destsz,
+                                reinterpret_cast<u8*>(buffer_),
+                                static_cast<unsigned long>(sz));
+        if (zstatus != Z_OK) {
+            std::cout << "GZip error" << std::endl;
+            exit(zstatus);
+        }
+        return std::make_tuple(AKU_SUCCESS, static_cast<size_t>(destsz));
+    }
+    void close() {
+        cursor_->close();
+    }
+};
 
 //! Microhttpd callback functions
 namespace MHD {
