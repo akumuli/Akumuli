@@ -15,6 +15,9 @@ static Logger logger("http");
 class CompressedStream : public ReadOperation {
     ReadOperation *cursor_;
     char* buffer_;
+    u32 pos_;
+    u32 cap_;
+    bool is_done_;
     enum {
         ALIGN = 64,
         BUFFER_SIZE = 0x1000,
@@ -23,6 +26,9 @@ public:
     CompressedStream(ReadOperation* cur)
         : cursor_(cur)
         , buffer_(static_cast<char*>(aligned_alloc(ALIGN, BUFFER_SIZE)))
+        , pos_(0)
+        , cap_(0)
+        , is_done_(false)
     {
     }
 
@@ -44,22 +50,46 @@ public:
         return cursor_->get_error_message();
     }
     std::tuple<size_t, bool> read_some(char *buf, size_t buf_size) override {
-        aku_Status status;
-        size_t sz;
-        std::tie(status, sz) = cursor_->read_some(buffer_, BUFFER_SIZE);
-        // TODO: check error
-        unsigned long destsz = static_cast<unsigned long>(buf_size);
-        auto zstatus = compress(reinterpret_cast<u8*>(buf),
-                                &destsz,
-                                reinterpret_cast<u8*>(buffer_),
-                                static_cast<unsigned long>(sz));
-        if (zstatus != Z_OK) {
-            std::cout << "GZip error" << std::endl;
-            exit(zstatus);
+        size_t retsz = 0;
+        while (buf_size) {
+            if (pos_ == cap_) {
+                if (is_done_) {
+                    return std::make_tuple(retsz, retsz == 0);
+                }
+                pos_ = 0;
+                std::tie(cap_, is_done_) = cursor_->read_some(buffer_, BUFFER_SIZE);
+                continue;
+            }
+            if (cap_) {
+                auto available = cap_ - pos_;
+                unsigned long destsz = static_cast<unsigned long>(buf_size);
+                auto batchsize = std::min(static_cast<unsigned long>(available),
+                                          static_cast<unsigned long>(buf_size));
+                while (compressBound(batchsize) > buf_size) {
+                    batchsize /= 2;
+                }
+                auto zstatus = compress(reinterpret_cast<u8*>(buf),
+                                        &destsz,
+                                        reinterpret_cast<u8*>(buffer_ + pos_),
+                                        batchsize);
+                pos_ += batchsize;
+                retsz += destsz;
+                buf += destsz;
+                buf_size -= destsz;
+                if (Z_BUF_ERROR) {
+                    // input is too large
+                }
+                if (zstatus != Z_OK) {
+                    // TODO: handle
+                    std::cout << "GZip error" << std::endl;
+                    exit(zstatus);
+                }
+            }
         }
-        return std::make_tuple(AKU_SUCCESS, static_cast<size_t>(destsz));
+        return std::make_tuple(static_cast<size_t>(retsz), is_done_);
     }
-    void close() {
+
+    void close() override {
         cursor_->close();
     }
 };
@@ -130,6 +160,8 @@ static int accept_connection(void           *cls,
             ReadOperation* cursor = static_cast<ReadOperation*>(*con_cls);
             if (cursor == nullptr) {
                 cursor = queryproc->create(endpoint);
+                // TODO: check header
+                cursor = new CompressedStream(cursor);
                 *con_cls = cursor;
                 logger.info() << "Cursor " << reinterpret_cast<u64>(con_cls) << " created";
                 return MHD_YES;
@@ -156,7 +188,6 @@ static int accept_connection(void           *cls,
                 logger.error() << "Cursor " << reinterpret_cast<u64>(con_cls) << " error: " << error_msg;
                 return error_response(error_msg, MHD_HTTP_BAD_REQUEST);
             }
-
             auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
             int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
             MHD_destroy_response(response);
