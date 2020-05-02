@@ -722,6 +722,7 @@ int main(int argc, char** argv) {
                 ("disable-wal", "Disable WAL in generated configuration file (can be used with --init)")
                 ("debug-dump", po::value<std::string>(), "Create debug dump")
                 ("debug-recovery-dump", po::value<std::string>(), "Create debug dump of the system after crash recovery")
+                ("version", "Print software version")
                 ;
 
         po::variables_map vm;
@@ -814,6 +815,11 @@ int main(int argc, char** argv) {
             } else {
                 cmd_dump_recovery_debug_information(cmd_config_path, path.c_str());
             }
+            exit(EXIT_SUCCESS);
+        }
+
+        if (vm.count("version")) {
+            std::cout << AKU_VERSION << std::endl;
             exit(EXIT_SUCCESS);
         }
 
