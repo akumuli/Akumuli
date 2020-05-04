@@ -45,6 +45,20 @@ matrix:
       - GENERIC_BUILD=false
       script:
       - bash ./CI/runci.sh osx
+    # VM-based 64-bit build (Clang)
+    - os: linux
+      dist: bionic
+      sudo: required
+      compiler: clang
+      env:
+      - DISTRIBUTION=ubuntu/bionic
+      - DEPLOY_PACKAGE=false
+      - DEPLOY_IMAGE=false
+      - GENERIC_BUILD=false
+      - CMAKE_EXTRA_ARGS="-DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++"
+      #- DEBUG_BUILD=true
+      script:
+      - bash ./CI/runci.sh ubuntu-18.04
     # VM-based 64-bit WAL check build (GCC)
     - os: linux
       dist: bionic
