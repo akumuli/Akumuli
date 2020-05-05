@@ -2,7 +2,6 @@
 
 sudo apt-get update
 sudo apt-get install -y sudo
-sudo apt-get install -y clang-6.0
 sudo apt-get install -y libboost-all-dev
 sudo apt-get install -y libapr1-dev libaprutil1-dev libaprutil1-dbd-sqlite3
 sudo apt-get install -y liblog4cxx-dev

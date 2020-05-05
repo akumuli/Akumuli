@@ -22,24 +22,23 @@ sh ./CI/prerequisites-$1.sh
 mkdir build
 cd build
 
-CMAKE_EXTRA_ARGS=${CMAKE_EXTRA_ARGS:-""}
 
 if [[ $DEBUG_BUILD == true ]]; then
     echo "DEBUG_BUILD"
-    cmake .. -DCMAKE_BUILD_TYPE=Debug ${CMAKE_EXTRA_ARGS};
+    cmake .. -DCMAKE_BUILD_TYPE=Debug;
     if [ $? -ne 0 ]; then
         exit 1
     fi
 else
     if [[ $GENERIC_BUILD == true ]]; then
         echo "GENERIC BUILD"
-        cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen ${CMAKE_EXTRA_ARGS};
+        cmake .. -DCMAKE_BUILD_TYPE=ReleaseGen;
         if [ $? -ne 0 ]; then
             exit 1
         fi
     else
         echo "SKYLAKE BUILD"
-        cmake .. -DCMAKE_BUILD_TYPE=Release ${CMAKE_EXTRA_ARGS};
+        cmake .. -DCMAKE_BUILD_TYPE=Release;
         if [ $? -ne 0 ]; then
             exit 1
         fi
