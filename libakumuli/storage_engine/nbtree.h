@@ -95,7 +95,7 @@ struct NBTreeCandlestickHint {
 };
 
 struct SuperblockAppender {
-    ~SuperblockAppender() = default;
+    virtual ~SuperblockAppender() = default;
     virtual aku_Status append(SubtreeRef const& p) = 0;
     virtual bool top(SubtreeRef* outref) const = 0;
     virtual bool top(LogicAddr* outaddr) const = 0;
