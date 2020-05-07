@@ -35,7 +35,7 @@ static const i64 AKU_STARTING_SERIES_ID = 1024;
 
 struct SeriesMatcherBase {
 
-    ~SeriesMatcherBase() = default;
+    virtual ~SeriesMatcherBase() = default;
 
     /** Add new string to matcher.
       */

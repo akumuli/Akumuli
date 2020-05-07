@@ -140,6 +140,16 @@ static int accept_connection(void           *cls,
             ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
             MHD_destroy_response(response);
             return ret;
+        } else if (path == "/api/version") {
+            std::string version = queryproc->get_resource("version");
+            auto response = MHD_create_response_from_buffer(version.size(), const_cast<char*>(version.data()), MHD_RESPMEM_MUST_COPY);
+            int ret = MHD_add_response_header(response, "content-type", "application/json");
+            if (ret == MHD_NO) {
+                return ret;
+            }
+            ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+            MHD_destroy_response(response);
+            return ret;
         } else {
             std::string error_msg = "Invalid url " + path;
             logger.error() << error_msg << " (GET)";

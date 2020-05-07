@@ -20,7 +20,6 @@ namespace QP {
 class EWMA {
     u32 warmup_;
     double value_;
-    aku_Timestamp last_;
     double decay_;
 public:
     EWMA();

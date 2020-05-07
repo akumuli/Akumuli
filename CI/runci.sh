@@ -22,6 +22,7 @@ sh ./CI/prerequisites-$1.sh
 mkdir build
 cd build
 
+
 if [[ $DEBUG_BUILD == true ]]; then
     echo "DEBUG_BUILD"
     cmake .. -DCMAKE_BUILD_TYPE=Debug;

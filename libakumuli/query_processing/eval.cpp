@@ -170,7 +170,7 @@ struct MuparserEvalImpl : Node {
     }
 };
 
-// ExprtkEval
+// ExprEval
 
 ExprEval::ExprEval(const boost::property_tree::ptree& expr,
                    const ReshapeRequest&              req,

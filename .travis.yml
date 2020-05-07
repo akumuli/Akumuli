@@ -35,16 +35,20 @@ matrix:
       - bash ./CI/runci.sh ubuntu-18.04
       - source ./CI/prepare-docker-image.sh
       if: branch = master OR tag IS present
-    # VM-based 64-bit OSX build (Clang)
-    - os: osx
-      osx_image: xcode9.2
+    # VM-based 64-bit build (Clang)
+    - os: linux
+      dist: bionic
+      sudo: required
       compiler: clang
       env:
+      - DISTRIBUTION=ubuntu/bionic
       - DEPLOY_PACKAGE=false
       - DEPLOY_IMAGE=false
       - GENERIC_BUILD=false
+      #- DEBUG_BUILD=true
       script:
-      - bash ./CI/runci.sh osx
+      - bash ./CI/runci.sh ubuntu-18.04
+      if: branch = master OR tag IS present
     # VM-based 64-bit WAL check build (GCC)
     - os: linux
       dist: bionic

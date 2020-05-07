@@ -24,7 +24,6 @@ EWMA::EWMA()
 EWMA::EWMA(double decay)
     : warmup_(0)
     , value_(0.0)
-    , last_(0)
     , decay_(decay)
 {
 }

@@ -471,20 +471,34 @@ void aku_debug_print(aku_Database *db) {
 }
 
 aku_Status aku_get_resource(const char* res_name, char* buf, size_t* bufsize) {
+    static const std::set<std::string> RESOURCES = {
+        "function-names",
+        "version"
+    };
     std::string res(res_name);
-    if (res != "function-names") {
+    if (RESOURCES.count(res) == 0) {
         return AKU_EBAD_ARG;
     }
-    auto names = QP::list_query_registry();
-    std::string result;
-    for (auto name: names) {
-        result += name;
-        result += "\n";
+    if (res == "function-names") {
+        auto names = QP::list_query_registry();
+        std::string result;
+        for (auto name: names) {
+            result += name;
+            result += "\n";
+        }
+        if (result.size() > *bufsize) {
+            return AKU_EOVERFLOW;
+        }
+        std::copy(result.begin(), result.end(), buf);
+        *bufsize = result.size();
     }
-    if (result.size() > *bufsize) {
-        return AKU_EOVERFLOW;
+    else if (res == "version") {
+        std::string result = "Akumuil " AKU_VERSION "\nBuild info: " AKU_BUILD_INFO "\n";
+        if (result.size() > *bufsize) {
+            return AKU_EOVERFLOW;
+        }
+        std::copy(result.begin(), result.end(), buf);
+        *bufsize = result.size();
     }
-    std::copy(result.begin(), result.end(), buf);
-    *bufsize = result.size();
     return AKU_SUCCESS;
 }
