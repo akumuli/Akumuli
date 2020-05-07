@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.8.78
+--------------
+
+IMPROVEMENT
+
+* Add --version command line argument
+* Add /api/version endpoint
+
 Version 0.8.77
 --------------
 
