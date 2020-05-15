@@ -1,6 +1,13 @@
 Release notes
 =============
 
+Version 0.8.79
+--------------
+
+BUG FIX
+
+* Update Docker images on CI
+
 Version 0.8.78
 --------------
 
