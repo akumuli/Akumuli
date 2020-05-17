@@ -177,7 +177,7 @@ after_success:
 # Push docker image. Docker image should be created and the variables REPO,
 # VERSION, and TAG should exist.
 - if [[ $TRAVIS_PULL_REQUEST == "false" && $DEPLOY_IMAGE == "true" ]]; then
-      echo "Pushing to $REPO $VERSION $TAG"
+      echo "Pushing to $REPO $VERSION $TAG";
       sudo docker login -u "$DOCKER_USER" -p "$DOCKER_PASS";
       sudo docker push $REPO:$VERSION-$TAG;
   fi 
