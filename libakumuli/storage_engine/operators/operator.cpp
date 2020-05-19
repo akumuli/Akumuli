@@ -56,17 +56,19 @@ void AggregationResult::add(aku_Timestamp ts, double xs, bool forward) {
         maxts = ts;
     }
     if (cnt == 0) {
-        first = xs;
         if (forward) {
+            first = xs;
             _begin = ts;
         } else {
+            last = xs;
             _end = ts;
         }
     }
-    last = xs;
     if (forward) {
+        last = xs;
         _end = ts;
     } else {
+        first = xs;
         _begin = ts;
     }
     cnt += 1;
@@ -83,8 +85,6 @@ void AggregationResult::combine(const AggregationResult& other) {
         max = other.max;
         maxts = other.maxts;
     }
-    min = std::min(min, other.min);
-    max = std::max(max, other.max);
     if (_begin > other._begin) {
         first = other.first;
         _begin = other._begin;
