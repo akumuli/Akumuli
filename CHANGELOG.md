@@ -1,6 +1,14 @@
 Release notes
 =============
 
+Version 0.8.80
+--------------
+
+BUG FIX
+
+* Fix #357 group-aggreagate query in backward direction returns
+  invalid first/last values
+
 Version 0.8.79
 --------------
 
