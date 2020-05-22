@@ -51,7 +51,7 @@ add_executable(
 target_link_libraries(
     test_protocolparser
     akumuli
-    sqlite3
+    "${SQLITE3_LIBRARY}"
     ${Boost_LIBRARIES}
     "${LOG4CXX_LIBRARIES}"
     pthread
@@ -224,7 +224,6 @@ target_link_libraries(
     test_storage
     roaring
     lz4
-    sqlite3
     "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
@@ -397,7 +396,7 @@ target_compile_definitions(test_column_store PRIVATE AKU_UNIT_TEST_CONTEXT=1)
 
 target_link_libraries(
     test_column_store
-    sqlite3
+    "${SQLITE3_LIBRARY}"
     "${APRUTIL_LIBRARY}"
     "${APR_LIBRARY}"
     ${Boost_LIBRARIES}
