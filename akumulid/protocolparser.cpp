@@ -173,7 +173,7 @@ bool RESPProtocolParser::parse_timestamp(RESPStream& stream, aku_Sample& sample)
     case RESPStream::_AGAIN:
         return false;
     case RESPStream::INTEGER:
-        std::tie(success, sample.timestamp) = stream.read_int();
+        std::tie(success, sample.timestamp) = stream.read_uint();
         if (!success) {
             return false;
         }
@@ -285,7 +285,7 @@ bool RESPProtocolParser::parse_dict(RESPStream& stream) {
                     return false;
                 } else if (next == RESPStream::INTEGER) {
                     aku_ParamId uid;
-                    std::tie(success, uid) = stream.read_int();
+                    std::tie(success, uid) = stream.read_uint();
                     if (!success) {
                         rdbuf_.discard();
                         return false;
@@ -345,7 +345,7 @@ int RESPProtocolParser::parse_ids(RESPStream& stream, aku_ParamId* ids, int nval
         }
         break;
     case RESPStream::INTEGER:
-        std::tie(success, uid) = stream.read_int();
+        std::tie(success, uid) = stream.read_uint();
         if (!success) {
             rdbuf_.discard();
             return -1;

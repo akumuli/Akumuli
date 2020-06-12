@@ -61,13 +61,26 @@ struct RESPStream {
       * @return value
       * @throw on error
       */
-    std::tuple<bool, u64> read_int();
+    std::tuple<bool, i64> read_int();
 
     /** Read integer implementation
       * @throw on error
       * @return parsed integer
       */
-    std::tuple<bool, u64> _read_int_body();
+    std::tuple<bool, i64> _read_int_body();
+
+    /** Read unsigned integer.
+      * Result is undefined unless next element in a stream is an integer.
+      * @return value
+      * @throw on error
+      */
+    std::tuple<bool, u64> read_uint();
+
+    /** Read unsigned integer implementation
+      * @throw on error
+      * @return parsed integer
+      */
+    std::tuple<bool, u64> _read_uint_body();
 
     /** Read string element.
       * Result is undefined unless next element in a stream is a string.

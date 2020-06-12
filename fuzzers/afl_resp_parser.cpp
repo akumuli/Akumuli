@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
             auto type = stream.next_type();
             switch(type) {
             case RESPStream::INTEGER:
-                stream.read_int();
+                stream.read_uint();
                 break;
             case RESPStream::STRING:
                 stream.read_string(strbuffer, RESPStream::STRING_LENGTH_MAX);

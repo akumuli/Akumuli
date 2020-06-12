@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
             auto type = protocol.next_type();
             switch(type) {
             case RESPStream::INTEGER:
-                intvalue = protocol.read_int();
+                intvalue = protocol.read_uint();
                 if (intvalue != 1234567) {
                     std::cerr << "Bad int value at " << j << std::endl;
                     return -1;

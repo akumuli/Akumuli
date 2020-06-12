@@ -16,7 +16,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer) {
     BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::INTEGER);
     bool success;
     u64 result;
-    std::tie(success, result) = resp.read_int();
+    std::tie(success, result) = resp.read_uint();
     BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(result, 1234567890);
 }
@@ -29,7 +29,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_incomplete_integer) {
     BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::INTEGER);
     bool success;
     u64 result;
-    std::tie(success, result) = resp.read_int();
+    std::tie(success, result) = resp.read_uint();
     BOOST_REQUIRE(!success);
 }
 
@@ -39,7 +39,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_wrong_type) {
     MemStreamReader stream(buffer, 14);
     RESPStream resp(&stream);
     BOOST_REQUIRE_EQUAL(resp.next_type(), RESPStream::STRING);
-    BOOST_CHECK_THROW(resp.read_int(), RESPError);
+    BOOST_CHECK_THROW(resp.read_uint(), RESPError);
 }
 
 BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_bad_value) {
@@ -47,7 +47,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_bad_value) {
     const char* buffer = ":123fl\r\n";
     MemStreamReader stream(buffer, 14);
     RESPStream resp(&stream);
-    BOOST_CHECK_THROW(resp.read_int(), RESPError);
+    BOOST_CHECK_THROW(resp.read_uint(), RESPError);
 }
 
 BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_bad_end_seq) {
@@ -55,7 +55,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_bad_end_seq) {
     const char* buffer = ":1234567890\r00\r\n";
     MemStreamReader stream(buffer, 16);
     RESPStream resp(&stream);
-    BOOST_CHECK_THROW(resp.read_int(), RESPError);
+    BOOST_CHECK_THROW(resp.read_uint(), RESPError);
 }
 
 BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_too_long) {
@@ -70,7 +70,7 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_integer_too_long) {
     // Integer is too long
     MemStreamReader stream(buffer, 104);
     RESPStream resp(&stream);
-    BOOST_CHECK_THROW(resp.read_int(), RESPError);
+    BOOST_CHECK_THROW(resp.read_uint(), RESPError);
 }
 
 // Test strings
@@ -245,20 +245,20 @@ BOOST_AUTO_TEST_CASE(Test_respstream_read_array) {
     BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(size, 3);
     u64 first;
-    std::tie(success, first) = resp.read_int();
+    std::tie(success, first) = resp.read_uint();
     BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(first, 1);
     u64 second;
-    std::tie(success, second) = resp.read_int();
+    std::tie(success, second) = resp.read_uint();
     BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(second, 2);
     u64 third;
-    std::tie(success, third) = resp.read_int();
+    std::tie(success, third) = resp.read_uint();
     BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(third, 3);
     // Read value after array end
     u64 eight;
-    std::tie(success, eight) = resp.read_int();
+    std::tie(success, eight) = resp.read_uint();
     BOOST_REQUIRE(success);
     BOOST_REQUIRE_EQUAL(eight, 8);
 }

@@ -42,7 +42,73 @@ RESPStream::Type RESPStream::next_type() const {
     return result;
 }
 
-std::tuple<bool, u64> RESPStream::_read_int_body() {
+std::tuple<bool, i64> RESPStream::_read_int_body() {
+    const int MAX_DIGITS = 20 + 2;  // Maximum number of decimal digits in u64 + \r\n
+    Byte buf[MAX_DIGITS];
+    u64 result = 0;
+    int res = stream_->read_line(buf, MAX_DIGITS);
+    if (res <= 0) {
+        if (res == -1*MAX_DIGITS) {
+            // Invalid input, too many digits in the number
+            auto ctx = stream_->get_error_context("integer is too long");
+            BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+        }
+        return std::make_tuple(false, 0ull);
+    }
+    bool sign = buf[0] == '-';
+    for (int i = static_cast<int>(sign); i < res; i++) {
+        Byte c = buf[i];
+        // c must be in [0x30:0x39] range
+        if (c <= 0x39 && c >= 0x30) {
+            static const u64 max_i64 = std::numeric_limits<i64>::max() - 1;
+            static const u64 max_mul = std::numeric_limits<i64>::max() / 10 - 1;
+            if (result > max_mul) {
+                // Invalid input, integer overflow
+                auto ctx = stream_->get_error_context("integer overflow");
+                BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+            }
+            result *= 10;
+            u32 digit = static_cast<u32>(c & 0x0F);
+            if (result > (max_i64 - digit)) {
+                // Invalid input, integer overflow
+                auto ctx = stream_->get_error_context("integer overflow");
+                BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+            }
+            result += digit;
+        } else if (c == '\n') {
+            // Note: I decided to support both \r\n and \n line endings in Akumuli for simplicity.
+            return std::make_tuple(true, (sign ? -1 : 1) * result);
+        } else if (c == '\r') {
+            // The next one should be \n
+            i++;
+            if (i < res && buf[i] == '\n') {
+                return std::make_tuple(true, (sign ? -1 : 1) * result);
+            }
+            auto ctx = stream_->get_error_context("invalid symbol inside stream - '\\r'");
+            BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+        } else {
+            auto ctx = stream_->get_error_context("can't parse integer (character value out of range)");
+            BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+        }
+    }
+    // Bad stream
+    auto ctx = stream_->get_error_context("error in stream decoding routine");
+    BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+}
+
+std::tuple<bool, i64> RESPStream::read_int() {
+    if (stream_->is_eof()) {
+        return std::make_tuple(false, 0);
+    }
+    Byte c = stream_->get();
+    if (c != ':') {
+        auto ctx = stream_->get_error_context("integer expected");
+        BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
+    }
+    return _read_int_body();
+}
+
+std::tuple<bool, u64> RESPStream::_read_uint_body() {
     const int MAX_DIGITS = 20 + 2;  // Maximum number of decimal digits in u64 + \r\n
     Byte buf[MAX_DIGITS];
     u64 result = 0;
@@ -95,7 +161,7 @@ std::tuple<bool, u64> RESPStream::_read_int_body() {
     BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
 }
 
-std::tuple<bool, u64> RESPStream::read_int() {
+std::tuple<bool, u64> RESPStream::read_uint() {
     if (stream_->is_eof()) {
         return std::make_tuple(false, 0ull);
     }
@@ -104,7 +170,7 @@ std::tuple<bool, u64> RESPStream::read_int() {
         auto ctx = stream_->get_error_context("integer expected");
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
-    return _read_int_body();
+    return _read_uint_body();
 }
 
 std::tuple<bool, int> RESPStream::_read_string_body(Byte *buffer, size_t byte_buffer_size) {
@@ -152,7 +218,7 @@ std::tuple<bool, int> RESPStream::read_bulkstr(Byte *buffer, size_t buffer_size)
     // parse "{value}\r\n"
     bool success;
     u64 n;
-    std::tie(success, n) = _read_int_body();
+    std::tie(success, n) = _read_uint_body();
     if (!success) {
         return std::make_tuple(false, 0);
     }
@@ -198,7 +264,7 @@ std::tuple<bool, u64> RESPStream::read_array_size() {
         auto ctx = stream_->get_error_context("bad call");
         BOOST_THROW_EXCEPTION(RESPError(std::get<0>(ctx), std::get<1>(ctx)));
     }
-    return _read_int_body();
+    return _read_uint_body();
 }
 
 }
