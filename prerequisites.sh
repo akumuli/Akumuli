@@ -14,6 +14,7 @@ case $distri in
     "ubuntu") pkgman='apt';;
     "santiago") pkgman='yum';; #RHEL6
     "tikanga") pkgman='yum';; #RHEL5
+    "arch") pkgman='pacman';; #Arch Linux
 esac
 
 
@@ -44,7 +45,25 @@ else
                                         libmicrohttpd-dev \
                                         libjemalloc-dev
         else
-                echo "ERROR: Unknown package manager: $distri"
-                exit 1
+                if [ "x$pkgman" = "xpacman" ]; then
+                        echo 'The script will install packages using pacman.' \
+                             'It can ask for your sudo password.'
+
+                        echo 'Trying to install cmake'
+                        sudo pacman --noconfirm -S cmake
+
+                        echo 'Trying to install boost libraries'
+                        sudo pacman --noconfirm -S boost boost-libs
+
+                        echo 'Trying to install other libraries'
+                        sudo pacman --noconfirm -S log4cxx \
+                                                 apr apr-util \
+                                                 sqlite \
+                                                 libmicrohttpd \
+                                                 jemalloc
+                else
+                        echo "ERROR: Unknown package manager: $distri"
+                        exit 1
+                fi
         fi
 fi #package manager check
