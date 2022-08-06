@@ -4,6 +4,10 @@
 #include <functional>
 #include <set>
 
+#if defined(__APPLE__)
+#include <array>
+#endif
+
 #include <boost/algorithm/string.hpp>
 
 #include "muParser.h"

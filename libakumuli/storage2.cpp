@@ -41,6 +41,10 @@
 #include "fcntl_compat.h"
 #include <cstdlib>
 
+#if defined(__APPLE__)
+#include <stack>
+#endif
+
 namespace Akumuli {
 
 // Utility functions & classes //
