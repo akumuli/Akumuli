@@ -32,6 +32,12 @@ else()
     if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "aarch64")
         set(APP_ARCH "arm64")
     endif()
+    if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "ppc")
+        set(APP_ARCH "ppc")
+    endif()
+    if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "ppc64")
+        set(APP_ARCH "ppc64")
+    endif()
     if("${APP_ARCH}" STREQUAL "")
         message(FATAL_ERROR  "Architecture not supported")
     endif()
@@ -77,6 +83,22 @@ elseif("${APP_ARCH}" STREQUAL "i386")
     add_definitions(-DDISABLEAVX)
     add_definitions(-DDISABLE_EMBEDDED_ASM)
     message("i386 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
+elseif("${APP_ARCH}" STREQUAL "ppc")
+    # This work on ppc
+    set(CMAKE_CXX_FLAGS_RELEASE
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("ppc CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
+elseif("${APP_ARCH}" STREQUAL "ppc64")
+    # This work on ppc64
+    set(CMAKE_CXX_FLAGS_RELEASE
+     "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c++11")
+    set(CMAKE_C_FLAGS_RELEASE
+     "${CMAKE_C_FLAGS_RELEASE} -Wall -Werror -ffast-math -funroll-loops -O3 -std=c99")
+    add_definitions(-DDISABLE_EMBEDDED_ASM)
+    message("ppc64 CXXFLAGS ${CMAKE_CXX_FLAGS_RELEASE}")
 elseif("${APP_ARCH}" STREQUAL "arm64")
     # This work on arm
     set(CMAKE_CXX_FLAGS_RELEASE
