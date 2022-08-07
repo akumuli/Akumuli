@@ -26,6 +26,18 @@
 #include "logger.h"
 #include "server.h"
 
+// https://github.com/macports/macports-ports/pull/8941/files
+// Beginning with v0.9.71, libmicrohttpd changed the return type
+// of most functions from int to enum MHD_Result
+// https://git.gnunet.org/gnunet.git/tree/src/include/gnunet_mhd_compat.h
+// proposes to define a constant for the return type so it works well
+// with all versions of libmicrohttpd
+#if MHD_VERSION >= 0x00097002
+#define MHD_RESULT enum MHD_Result
+#else
+#define MHD_RESULT int
+#endif
+
 namespace Akumuli {
 namespace Http {
 
