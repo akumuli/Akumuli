@@ -51,21 +51,21 @@ static ApiEndpoint get_endpoint(const std::string& path) {
     return ApiEndpoint::UNKNOWN;
 }
 
-static int accept_connection(void           *cls,
-                             MHD_Connection *connection,
-                             const char     *url,
-                             const char     *method,
-                             const char     *version,
-                             const char     *upload_data,
-                             size_t         *upload_data_size,
-                             void          **con_cls)
+static MHD_RESULT accept_connection(void           *cls,
+                                    MHD_Connection *connection,
+                                    const char     *url,
+                                    const char     *method,
+                                    const char     *version,
+                                    const char     *upload_data,
+                                    size_t         *upload_data_size,
+                                    void          **con_cls)
 {
     std::string path = url;
     auto error_response = [&](const char* msg, unsigned int error_code) {
         char buffer[0x200];
         int len = snprintf(buffer, 0x200, "-%s\r\n", msg);
         auto response = MHD_create_response_from_buffer(len, buffer, MHD_RESPMEM_MUST_COPY);
-        int ret = MHD_queue_response(connection, error_code, response);
+        MHD_RESULT ret = MHD_queue_response(connection, error_code, response);
         MHD_destroy_response(response);
         return ret;
     };
@@ -104,7 +104,7 @@ static int accept_connection(void           *cls,
             }
 
             auto response = MHD_create_response_from_callback(MHD_SIZE_UNKNOWN, 64*1024, &read_callback, cursor, &free_callback);
-            int ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+            MHD_RESULT ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
             MHD_destroy_response(response);
             return ret;
         } else {
@@ -123,7 +123,7 @@ static int accept_connection(void           *cls,
         if (path == "/api/stats") {
             std::string stats = queryproc->get_all_stats();
             auto response = MHD_create_response_from_buffer(stats.size(), const_cast<char*>(stats.data()), MHD_RESPMEM_MUST_COPY);
-            int ret = MHD_add_response_header(response, "content-type", "application/json");
+            MHD_RESULT ret = MHD_add_response_header(response, "content-type", "application/json");
             if (ret == MHD_NO) {
                 return ret;
             }
@@ -133,7 +133,7 @@ static int accept_connection(void           *cls,
         } else if (path == "/api/function-names") {
             std::string stats = queryproc->get_resource("function-names");
             auto response = MHD_create_response_from_buffer(stats.size(), const_cast<char*>(stats.data()), MHD_RESPMEM_MUST_COPY);
-            int ret = MHD_add_response_header(response, "content-type", "application/json");
+            MHD_RESULT ret = MHD_add_response_header(response, "content-type", "application/json");
             if (ret == MHD_NO) {
                 return ret;
             }
@@ -143,7 +143,7 @@ static int accept_connection(void           *cls,
         } else if (path == "/api/version") {
             std::string version = queryproc->get_resource("version");
             auto response = MHD_create_response_from_buffer(version.size(), const_cast<char*>(version.data()), MHD_RESPMEM_MUST_COPY);
-            int ret = MHD_add_response_header(response, "content-type", "application/json");
+            MHD_RESULT ret = MHD_add_response_header(response, "content-type", "application/json");
             if (ret == MHD_NO) {
                 return ret;
             }
